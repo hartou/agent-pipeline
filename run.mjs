@@ -212,7 +212,7 @@ async function main() {
       { role: 'user', content: userContent },
     ];
     process.stderr.write(`[orchestrate] calling ${cfg.label} (${cfg.model})...\n`);
-    const { content, usage } = await chat(cfg, messages, 6000);
+    const { content, usage } = await chat(cfg, messages, 12000);
     const out = args.out || `agent-output/${basename(args.task, '.md')}.plan.json`;
     await mkdir(dirname(resolve(ROOT, out)), { recursive: true });
     await writeFile(resolve(ROOT, out), content, 'utf8');
@@ -233,15 +233,16 @@ async function main() {
     const cfg = providerConfig(providerName, env);
     // Feed the worker the current contents of its target files so it edits minimally.
     const existing = await readContextFiles((sub.files || []).filter((p) => existsSync(resolve(ROOT, p))));
+    const extra = args.context.length ? await readContextFiles(args.context) : '';
     const messages = [
       { role: 'system', content: BUILD_SYSTEM },
       {
         role: 'user',
-        content: `SUBTASK ${sub.id}: ${sub.title}\n\nASSIGNED FILES (only these):\n${(sub.files || []).join('\n')}\n\nINSTRUCTIONS:\n${sub.instructions}\n\nACCEPTANCE:\n${(sub.acceptance || []).join('\n')}\n\n---\n\nCURRENT CONTENTS OF EXISTING TARGET FILES:\n\n${existing || '(all target files are new)'}`,
+        content: `SUBTASK ${sub.id}: ${sub.title}\n\nASSIGNED FILES (only these):\n${(sub.files || []).join('\n')}\n\nINSTRUCTIONS:\n${sub.instructions}\n\nACCEPTANCE:\n${(sub.acceptance || []).join('\n')}${extra ? `\n\n---\n\nREFERENCE / GROUND TRUTH:\n\n${extra}` : ''}\n\n---\n\nCURRENT CONTENTS OF EXISTING TARGET FILES:\n\n${existing || '(all target files are new)'}`,
       },
     ];
     process.stderr.write(`[build:${cfg.label}] ${sub.id} calling ${cfg.model}...\n`);
-    const { content, usage } = await chat(cfg, messages, 8000);
+    const { content, usage } = await chat(cfg, messages, 12000);
     const files = parseFileBlocks(content);
     if (files.length === 0) {
       const dump = `agent-output/${sub.id}.raw.txt`;
