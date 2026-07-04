@@ -69,7 +69,13 @@
   "loop": {
     "maxRounds": 3,
     "stopOn": "qa-green",
-    "maxCostUsd": 0
+    "maxCostUsd": 0,
+    "concurrency": 3
+  },
+  "container": {
+    "enabled": false,
+    "image": "agent-pipeline-runner:local",
+    "dockerfile": "tools/agent-runner/Dockerfile"
   },
   "telemetry": {
     "csv": "agent-context/telemetry.csv",

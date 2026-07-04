@@ -77,7 +77,8 @@
       "properties": {
         "maxRounds": { "type": "integer", "minimum": 1 },
         "stopOn": { "type": "string", "enum": ["qa-green"] },
-        "maxCostUsd": { "type": "number", "minimum": 0, "description": "0 disables the budget cap." }
+        "maxCostUsd": { "type": "number", "minimum": 0, "description": "0 disables the budget cap." },
+        "concurrency": { "type": "integer", "minimum": 1, "description": "Max build sub-tasks run in parallel (Fugu's dependsOn graph decides what's parallelizable)." }
       }
     },
     "telemetry": {
@@ -87,6 +88,16 @@
       "properties": {
         "csv": { "type": "string", "description": "Tier-1 auto-appended machine telemetry." },
         "curatedCsv": { "type": "string", "description": "Tier-2 hand-curated acceptance ledger; engine only drafts rows." }
+      }
+    },
+    "container": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "When enabled, each build sub-task runs in its own ephemeral Docker container (repo bind-mounted). Parallelism is governed by loop.concurrency and Fugu's dependsOn graph.",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "image": { "type": "string" },
+        "dockerfile": { "type": "string" }
       }
     }
   },

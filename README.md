@@ -39,6 +39,21 @@ node tools/agent-runner/run.mjs run --task agent-tasks/<f>.md    # full loop pla
 node tools/agent-runner/run.mjs report [--run <run_id>]          # aggregate telemetry
 ```
 
+## Parallel execution (containers)
+
+Fugu owns coordination: its plan declares `dependsOn` per sub-task, and the wiring
+runs everything with no unmet dependency **in parallel**, up to `loop.concurrency`.
+With `container.enabled` in the config, each build sub-task runs in its **own
+ephemeral Docker container** (repo bind-mounted, keys from the mounted `.env`).
+Two sub-tasks that touch the same file are never run at the same time.
+
+```sh
+docker compose --profile agents build agent-worker   # build the worker image (or the wiring builds it on demand)
+```
+
+Set `container.enabled: false` to fall back to in-process execution (still parallel,
+governed by `loop.concurrency`).
+
 ## Deploying to a new repo (deterministic)
 
 1. Copy the `tools/agent-runner/` folder into the target repo (vendored — pinned

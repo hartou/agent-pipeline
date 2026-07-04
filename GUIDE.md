@@ -81,6 +81,25 @@ The wiring follows Fugu's tag. It never forces a check to produce code, and it
 never crashes just because a worker had nothing to write — it reports back to Fugu
 and the loop continues.
 
+### Running in parallel (Fugu coordinates, containers execute)
+
+Coordination — what runs, in what order, what can go at the same time — is an
+orchestration decision, so it belongs to **Fugu**, not the wiring. Fugu expresses
+it in the plan with **`dependsOn`**: each sub‑task lists the ids that must finish
+first. Sub‑tasks with no unmet dependency run **in parallel**.
+
+The wiring is just Fugu's hands: it executes that graph, running independent
+sub‑tasks concurrently up to `loop.concurrency`. When `container.enabled` is set,
+each build sub‑task runs in its **own ephemeral Docker container** (the repo is
+bind‑mounted so it writes real files; keys come from the mounted `.env`). This gives
+isolation and lets you scale the number of workers.
+
+Safety net: the wiring will never run two sub‑tasks that touch the **same file** at
+once, even if Fugu forgot to sequence them — but Fugu should chain file‑sharing work
+with `dependsOn`. Build the worker image once with
+`docker compose --profile agents build agent-worker` (the wiring also builds it on
+demand).
+
 ### What's configurable (so it ports to any repo)
 
 Everything repo‑specific lives in one file, [`pipeline.config.json`](./pipeline.config.json):
@@ -157,6 +176,18 @@ The wiring used to assume every sub‑task writes code, so a verification‑only
 crashed it. It was fixed: Fugu now tags sub‑tasks `build` vs `verify`, and the wiring
 follows the tag instead of imposing its own rule. It also no longer crashes when a
 worker returns no files — it reports back to Fugu and keeps the loop alive.
+
+**Q: Can workers run in parallel?**
+Yes. Fugu declares a `dependsOn` graph in the plan; the wiring runs all independent
+sub‑tasks at once, up to `loop.concurrency`. With `container.enabled`, each build
+sub‑task runs in its own ephemeral Docker container. Two sub‑tasks that touch the
+same file are never run concurrently (Fugu sequences them; the wiring also guards).
+
+**Q: Is Fugu the coordinator, or the wiring?**
+Fugu. Coordination (order, dependencies, what's parallel) is an orchestration
+decision, so Fugu makes it in the plan (`dependsOn`). Fugu is a remote API and can't
+launch containers itself, so the wiring is its hands — it faithfully executes the
+graph. It does not decide the batching.
 
 **Q: How do I see performance / cost?**
 Every call is logged to `telemetry.csv` automatically. Run `report` for a per‑worker

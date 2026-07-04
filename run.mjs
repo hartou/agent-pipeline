@@ -22,10 +22,10 @@
 //   report [--run <run_id>]                     aggregate telemetry per worker
 //   orchestrate | worker                        legacy aliases
 
-import { readFile, writeFile, mkdir, appendFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, appendFile, readdir, rm } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve, basename } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { dirname, join, resolve, basename, relative } from 'node:path';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(process.cwd());
@@ -124,14 +124,21 @@ function estCost(pricing, usage) {
   return ((p / 1e6) * inRate + (c / 1e6) * outRate).toFixed(6);
 }
 
+// Serialize telemetry writes within this process so parallel in-process builds
+// can't interleave rows. (Container workers each write their own shard file.)
+let telemetryChain = Promise.resolve();
 async function logTelemetry(reg, row) {
-  const csvPath = reg?.telemetry?.csv;
-  if (!csvPath) return;
-  const abs = resolve(ROOT, csvPath);
-  await mkdir(dirname(abs), { recursive: true });
-  if (!existsSync(abs)) await writeFile(abs, TELEMETRY_COLUMNS.join(',') + '\n', 'utf8');
-  const full = { ts_iso: new Date().toISOString(), engine_version: engineVersion(), ...row };
-  await appendFile(abs, TELEMETRY_COLUMNS.map((c) => csvField(full[c])).join(',') + '\n', 'utf8');
+  const csvPath = process.env.PIPELINE_TELEMETRY_CSV || reg?.telemetry?.csv;
+  if (!csvPath) return undefined;
+  const write = async () => {
+    const abs = resolve(ROOT, csvPath);
+    await mkdir(dirname(abs), { recursive: true });
+    if (!existsSync(abs)) await writeFile(abs, TELEMETRY_COLUMNS.join(',') + '\n', 'utf8');
+    const full = { ts_iso: new Date().toISOString(), engine_version: engineVersion(), ...row };
+    await appendFile(abs, TELEMETRY_COLUMNS.map((c) => csvField(full[c])).join(',') + '\n', 'utf8');
+  };
+  telemetryChain = telemetryChain.then(write, write);
+  return telemetryChain;
 }
 
 async function chat(cfg, messages, maxTokens = 4000) {
@@ -212,8 +219,14 @@ Tag each sub-task with a "kind":
   implementation work).
 - "verify": a verification/health/smoke check only. It MUST NOT change code; the
   client runs the repo's real QA to confirm it. Leave "files" empty for verify.
+YOU OWN COORDINATION. Declare the execution order with "dependsOn" (a list of
+sub-task ids that must finish first). Sub-tasks with no unmet dependencies run in
+PARALLEL, so:
+- Give independent sub-tasks empty "dependsOn" so they run concurrently.
+- Two sub-tasks that edit the SAME file must NOT be concurrent — chain them with
+  "dependsOn" so they run one after another.
 Output STRICT JSON only (no prose, no markdown fences) with this shape:
-{"epic":"...","subtasks":[{"id":"...","title":"...","kind":"build|verify","worker":"<worker-key>","files":["..."],"instructions":"...","acceptance":["..."]}],"review_focus":["..."]}`;
+{"epic":"...","subtasks":[{"id":"...","title":"...","kind":"build|verify","worker":"<worker-key>","dependsOn":["..."],"files":["..."],"instructions":"...","acceptance":["..."]}],"review_focus":["..."]}`;
 }
 
 const WORKER_SYSTEM = `You are an implementation worker for the Northfield Mentor repo
@@ -489,8 +502,112 @@ async function doDoctor({ reg, env }) {
     if (names.has(n)) line('✓', `qa command: ${n}`);
     else { line('✗', `qa order references unknown command: ${n}`); ok = false; }
   }
+  if (reg.container?.enabled) {
+    const d = spawnSync('docker', ['version', '--format', '{{.Server.Version}}'], { encoding: 'utf8' });
+    if (d.status === 0) line('✓', `docker available (${(d.stdout || '').trim()})`);
+    else { line('✗', 'docker not available but container mode is enabled'); ok = false; }
+  }
   process.stdout.write(ok ? '\nDOCTOR: all green\n' : '\nDOCTOR: issues found\n');
   if (!ok) process.exitCode = 1;
+}
+
+// ---- parallel execution (Fugu owns coordination via dependsOn; wiring executes) ----
+
+// Execute a dependency graph with max parallelism. A sub-task runs once all its
+// dependsOn are DONE and it shares no file with a currently-running sub-task
+// (a safety net; Fugu should already sequence file-sharing tasks). runOne(sub)
+// resolves to { exitCode } (0 = ok).
+async function runGraph(subtasks, concurrency, runOne) {
+  const byId = new Map(subtasks.map((s) => [s.id, s]));
+  const done = new Set();
+  const remaining = new Set(subtasks.map((s) => s.id));
+  const running = new Map(); // id -> Promise<{ id, sub, r }>
+  const lockedFiles = new Set();
+  const results = [];
+  const filesOf = (s) => s.files || [];
+  const depsReady = (s) => (s.dependsOn || []).every((d) => !byId.has(d) || done.has(d));
+  const clashes = (s) => filesOf(s).some((f) => lockedFiles.has(f));
+
+  while (remaining.size > 0 || running.size > 0) {
+    if (running.size < concurrency) {
+      for (const id of [...remaining]) {
+        if (running.size >= concurrency) break;
+        const s = byId.get(id);
+        if (!depsReady(s) || clashes(s)) continue;
+        filesOf(s).forEach((f) => lockedFiles.add(f));
+        remaining.delete(id);
+        running.set(id, (async () => ({ id, sub: s, r: await runOne(s) }))());
+      }
+    }
+    if (running.size === 0) {
+      // everything left is blocked by an unmet dependency or a cycle
+      for (const id of remaining) results.push({ sub: byId.get(id), r: { exitCode: 1, blocked: true } });
+      break;
+    }
+    const { id, sub, r } = await Promise.race(running.values());
+    running.delete(id);
+    filesOf(sub).forEach((f) => lockedFiles.delete(f));
+    if (!r.blocked && r.exitCode === 0) done.add(id);
+    results.push({ sub, r });
+  }
+  return results;
+}
+
+function ensureImage(reg) {
+  const image = reg.container.image;
+  if (spawnSync('docker', ['image', 'inspect', image], { stdio: 'ignore' }).status === 0) return;
+  const dockerfile = reg.container.dockerfile || 'tools/agent-runner/Dockerfile';
+  process.stderr.write(`[container] building image ${image} from ${dockerfile}...\n`);
+  const build = spawnSync('docker', ['build', '-t', image, '-f', dockerfile, '.'], { cwd: ROOT, stdio: 'inherit' });
+  if (build.status !== 0) throw new Error(`docker build failed for ${image}`);
+}
+
+function makeContainerRunner({ reg, image, planRel, runId, round, artifacts }) {
+  const safe = (x) => String(x).replace(/[^a-zA-Z0-9_.-]/g, '_');
+  return (sub) => new Promise((resolveP) => {
+    const shardRel = `${artifacts}/.telemetry/${safe(runId)}__${safe(sub.id)}.csv`;
+    const args = [
+      'run', '--rm',
+      '-v', `${ROOT}:/repo`, '-w', '/repo',
+      '-e', `PIPELINE_TELEMETRY_CSV=/repo/${shardRel}`,
+      image,
+      'node', 'tools/agent-runner/run.mjs', 'build',
+      '--plan', planRel, '--subtask', sub.id, '--run-id', runId, '--round', String(round),
+    ];
+    process.stderr.write(`[run ${runId}] container ${sub.id} (${sub.worker})...\n`);
+    const child = spawn('docker', args, { stdio: 'inherit' });
+    child.on('close', (code) => resolveP({ exitCode: code ?? 1 }));
+    child.on('error', (e) => { process.stderr.write(`docker error for ${sub.id}: ${e.message}\n`); resolveP({ exitCode: 1 }); });
+  });
+}
+
+function makeInProcessRunner({ reg, env, runId, round }) {
+  return async (sub) => {
+    try {
+      const res = await doBuildSubtask({ reg, env, sub, runId, round });
+      return { exitCode: res.result === 'build_ok' ? 0 : 1, dumpPath: res.dumpPath };
+    } catch (e) {
+      process.stderr.write(`[build] ${sub.id} error: ${e.message}\n`);
+      return { exitCode: 1 };
+    }
+  };
+}
+
+// After a container batch, fold each per-sub-task telemetry shard into the main
+// CSV (single writer here, so no interleaving), then remove the shard dir.
+async function mergeTelemetryShards(reg, shardDir) {
+  const dirAbs = resolve(ROOT, shardDir);
+  if (!existsSync(dirAbs)) return;
+  const mainAbs = resolve(ROOT, reg.telemetry.csv);
+  await mkdir(dirname(mainAbs), { recursive: true });
+  if (!existsSync(mainAbs)) await writeFile(mainAbs, TELEMETRY_COLUMNS.join(',') + '\n', 'utf8');
+  const header = TELEMETRY_COLUMNS.join(',');
+  for (const f of (await readdir(dirAbs)).filter((x) => x.endsWith('.csv'))) {
+    const lines = (await readFile(join(dirAbs, f), 'utf8')).split('\n').filter((l) => l.length);
+    const rows = lines[0] === header ? lines.slice(1) : lines;
+    if (rows.length) await appendFile(mainAbs, rows.join('\n') + '\n', 'utf8');
+  }
+  await rm(dirAbs, { recursive: true, force: true });
 }
 
 // ---- full loop ----
@@ -516,19 +633,32 @@ async function doRun({ reg, env, task, taskFile }) {
       process.exitCode = 1;
       return;
     }
-    const buildIssues = [];
+    // Verify sub-tasks write no code; the client's QA confirms them.
     for (const sub of plan.subtasks || []) {
       if ((sub.kind || 'build') === 'verify') {
-        process.stderr.write(`[run ${runId}] ${sub.id} is a verify sub-task — no code written; the client's QA confirms it.\n`);
+        process.stderr.write(`[run ${runId}] ${sub.id} is a verify sub-task — no code; the client's QA confirms it.\n`);
         await logTelemetry(reg, {
           run_id: runId, round, verb: 'build', actor: sub.worker || 'client', role: 'worker',
           result: 'verify_skipped', files_written: 0, task_file: sub.id,
         });
-        continue;
       }
-      const res = await doBuildSubtask({ reg, env, sub, runId, round });
-      if (res.result !== 'build_ok') buildIssues.push({ sub, res });
     }
+    const buildable = (plan.subtasks || []).filter((s) => (s.kind || 'build') !== 'verify');
+    const concurrency = Math.max(1, reg.loop?.concurrency || 1);
+    const useContainers = !!reg.container?.enabled;
+    let runOne;
+    if (useContainers) {
+      ensureImage(reg);
+      runOne = makeContainerRunner({ reg, image: reg.container.image, planRel: relative(ROOT, planPath), runId, round, artifacts });
+    } else {
+      runOne = makeInProcessRunner({ reg, env, runId, round });
+    }
+    process.stderr.write(`[run ${runId}] executing ${buildable.length} build sub-task(s) at concurrency ${concurrency}${useContainers ? ' (containers)' : ' (in-process)'}...\n`);
+    const graphResults = await runGraph(buildable, concurrency, runOne);
+    if (useContainers) await mergeTelemetryShards(reg, join(artifacts, '.telemetry'));
+    const buildIssues = graphResults
+      .filter((g) => g.r.exitCode !== 0)
+      .map((g) => ({ sub: g.sub, res: { result: g.r.blocked ? 'blocked' : 'build_failed', dumpPath: g.r.dumpPath || join(artifacts, `${g.sub.id}.raw.txt`) } }));
     const qa = runQaCommands(reg);
     await logTelemetry(reg, {
       run_id: runId, round, verb: 'qa', actor: 'client', role: 'client', provider: 'local',
@@ -601,7 +731,10 @@ async function main() {
     const plan = JSON.parse(await readFile(resolve(ROOT, args.plan), 'utf8'));
     const sub = (plan.subtasks || []).find((s) => s.id === args.subtask);
     if (!sub) throw new Error(`Subtask ${args.subtask} not found in plan`);
-    const res = await doBuildSubtask({ reg, env, sub, providerOverride: args.provider, contextFiles: args.context, runId: `build-${Date.now()}`, round: 0 });
+    const res = await doBuildSubtask({
+      reg, env, sub, providerOverride: args.provider, contextFiles: args.context,
+      runId: args['run-id'] || `build-${Date.now()}`, round: args.round ? Number(args.round) : 0,
+    });
     if (res.result !== 'build_ok') {
       process.stderr.write(`[build] ${sub.id}: no file changes produced (raw output at ${res.dumpPath}).\n`);
       process.exitCode = 1;
