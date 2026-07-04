@@ -11,12 +11,15 @@
     "node": ">=20"
   },
   "scripts": {
-    "doctor": "node run.mjs doctor"
+    "doctor": "node run.mjs doctor",
+    "pack:dist": "npm pack"
   },
   "files": [
     "run.mjs",
     "pipeline.config.schema.json",
     "templates/",
-    "README.md"
+    "Dockerfile",
+    "README.md",
+    "GUIDE.md"
   ]
 }
