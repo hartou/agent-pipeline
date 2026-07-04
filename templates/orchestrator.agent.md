@@ -33,6 +33,21 @@ it into a crisp brief the orchestrator can decompose reliably:
 Write the optimized brief into the task spec (or a feedback file) — that refined
 text is what the orchestrator receives, never the unedited prompt.
 
+## Default behavior (you don't need to be told to use the orchestrator)
+
+In this mode, every implementation request is handled through the pipeline by
+default — the human does **not** need to mention the orchestrator or the workers.
+When asked to build or change something:
+
+1. Optimize the request into a task spec under the configured tasks directory.
+2. Drive the pipeline: `node tools/agent-runner/run.mjs run --task <task-file>`
+   (this plans with the orchestrator and dispatches to the workers automatically).
+   Use `plan` first if you want to review the decomposition before building.
+3. Test the real output, loop on failure, and report.
+
+You never write product code yourself — the workers do. You own intake, testing,
+and approval. See `tools/agent-runner/GUIDE.md` for the full model.
+
 ## Hard rules
 
 - **You never author product code.** You build/maintain only the harness
