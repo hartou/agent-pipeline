@@ -207,8 +207,13 @@ Read the customer request and the given task spec, then decompose the work into
 bounded worker sub-tasks. Assign each sub-task to the best-fit worker:
 ${workerRoster(reg)}
 Respect the task's stated scope and out-of-scope. Do NOT invent files or APIs.
+Tag each sub-task with a "kind":
+- "build": the worker writes/edits code files (this is the default for
+  implementation work).
+- "verify": a verification/health/smoke check only. It MUST NOT change code; the
+  client runs the repo's real QA to confirm it. Leave "files" empty for verify.
 Output STRICT JSON only (no prose, no markdown fences) with this shape:
-{"epic":"...","subtasks":[{"id":"...","title":"...","worker":"<worker-key>","files":["..."],"instructions":"...","acceptance":["..."]}],"review_focus":["..."]}`;
+{"epic":"...","subtasks":[{"id":"...","title":"...","kind":"build|verify","worker":"<worker-key>","files":["..."],"instructions":"...","acceptance":["..."]}],"review_focus":["..."]}`;
 }
 
 const WORKER_SYSTEM = `You are an implementation worker for the Northfield Mentor repo
@@ -320,10 +325,11 @@ async function doBuildSubtask({ reg, env, sub, providerOverride, contextFiles, r
   const files = parseFileBlocks(out.content);
   let result = 'build_ok';
   let written = [];
+  let dumpPath;
   if (files.length === 0) {
-    const dump = join(reg.paths?.artifacts || 'agent-output', `${sub.id}.raw.txt`);
-    await mkdir(dirname(resolve(ROOT, dump)), { recursive: true });
-    await writeFile(resolve(ROOT, dump), out.content, 'utf8');
+    dumpPath = join(reg.paths?.artifacts || 'agent-output', `${sub.id}.raw.txt`);
+    await mkdir(dirname(resolve(ROOT, dumpPath)), { recursive: true });
+    await writeFile(resolve(ROOT, dumpPath), out.content, 'utf8');
     result = 'no_file_blocks';
   } else {
     written = await writeRepoFiles(files);
@@ -335,9 +341,14 @@ async function doBuildSubtask({ reg, env, sub, providerOverride, contextFiles, r
     total_tokens: out.usage?.total_tokens, latency_ms: out.latencyMs, http_status: out.httpStatus,
     result, files_written: written.length, est_cost_usd: estCost(cfg.pricing, out.usage), task_file: sub.id,
   });
-  if (result === 'no_file_blocks') throw new Error(`${cfg.label} returned no @@@FILE blocks for ${sub.id}`);
-  process.stderr.write(`[build:${cfg.label}] ${sub.id} wrote ${written.length} file(s): ${written.join(', ')}\n`);
-  return written;
+  // The engine does NOT decide that a build must produce files; it records the
+  // outcome and lets the orchestrator (via the run loop) decide what happens next.
+  if (result === 'no_file_blocks') {
+    process.stderr.write(`[build:${cfg.label}] ${sub.id} produced no file changes (raw output at ${dumpPath}).\n`);
+  } else {
+    process.stderr.write(`[build:${cfg.label}] ${sub.id} wrote ${written.length} file(s): ${written.join(', ')}\n`);
+  }
+  return { written, result, dumpPath };
 }
 
 // Runs the repo's real QA commands against the real output. Captures output so
@@ -505,29 +516,47 @@ async function doRun({ reg, env, task, taskFile }) {
       process.exitCode = 1;
       return;
     }
+    const buildIssues = [];
     for (const sub of plan.subtasks || []) {
-      await doBuildSubtask({ reg, env, sub, runId, round });
+      if ((sub.kind || 'build') === 'verify') {
+        process.stderr.write(`[run ${runId}] ${sub.id} is a verify sub-task — no code written; the client's QA confirms it.\n`);
+        await logTelemetry(reg, {
+          run_id: runId, round, verb: 'build', actor: sub.worker || 'client', role: 'worker',
+          result: 'verify_skipped', files_written: 0, task_file: sub.id,
+        });
+        continue;
+      }
+      const res = await doBuildSubtask({ reg, env, sub, runId, round });
+      if (res.result !== 'build_ok') buildIssues.push({ sub, res });
     }
     const qa = runQaCommands(reg);
     await logTelemetry(reg, {
       run_id: runId, round, verb: 'qa', actor: 'client', role: 'client', provider: 'local',
       result: qa.allPass ? 'qa_green' : 'qa_red', qa_passed: qa.passed, qa_failed: qa.failed, task_file: taskFile,
     });
-    if (qa.allPass) {
+    if (buildIssues.length === 0 && qa.allPass) {
       process.stderr.write(`\n[run ${runId}] QA GREEN on round ${round}. Client should review the real output and approve.\n`);
       await doReport({ reg, runId });
       return;
     }
     const failing = qa.results.filter((r) => !r.ok);
-    feedback = `QA failed on round ${round}. Failing checks: ${failing.map((f) => f.name).join(', ')}.\n\n`
-      + failing.map((f) => {
-        const cmd = (reg.qa?.commands || []).find((c) => c.name === f.name);
-        return `### ${f.name} (exit ${f.code})\ncommand: ${cmd?.run}\noutput (tail):\n${f.output || ''}`;
-      }).join('\n\n')
-      + '\n\nProduce a minimal fix plan targeting ONLY these failures.';
+    const parts = [`Round ${round} did not pass.`];
+    if (buildIssues.length) {
+      parts.push('BUILD ISSUES (worker produced no file changes for a build sub-task):\n'
+        + buildIssues.map((b) => `- ${b.sub.id}: ${b.sub.title} (raw output at ${b.res.dumpPath})`).join('\n'));
+    }
+    if (failing.length) {
+      parts.push('QA FAILURES:\n'
+        + failing.map((f) => {
+          const cmd = (reg.qa?.commands || []).find((c) => c.name === f.name);
+          return `### ${f.name} (exit ${f.code})\ncommand: ${cmd?.run}\noutput (tail):\n${f.output || ''}`;
+        }).join('\n\n'));
+    }
+    parts.push('Produce a minimal fix plan targeting ONLY these issues.');
+    feedback = parts.join('\n\n');
     const fbPath = resolve(ROOT, join(artifacts, `${base}.feedback.r${round}.md`));
     await writeFile(fbPath, feedback, 'utf8');
-    process.stderr.write(`[run ${runId}] QA RED (${failing.map((f) => f.name).join(', ')}); wrote ${fbPath}; re-planning.\n`);
+    process.stderr.write(`[run ${runId}] round ${round} not green (build issues: ${buildIssues.length}, qa failing: ${failing.length}); wrote ${fbPath}; re-planning.\n`);
   }
   process.stderr.write(`\n[run ${runId}] exhausted ${maxRounds} round(s) without QA green.\n`);
   await doReport({ reg, runId });
@@ -572,7 +601,11 @@ async function main() {
     const plan = JSON.parse(await readFile(resolve(ROOT, args.plan), 'utf8'));
     const sub = (plan.subtasks || []).find((s) => s.id === args.subtask);
     if (!sub) throw new Error(`Subtask ${args.subtask} not found in plan`);
-    await doBuildSubtask({ reg, env, sub, providerOverride: args.provider, contextFiles: args.context, runId: `build-${Date.now()}`, round: 0 });
+    const res = await doBuildSubtask({ reg, env, sub, providerOverride: args.provider, contextFiles: args.context, runId: `build-${Date.now()}`, round: 0 });
+    if (res.result !== 'build_ok') {
+      process.stderr.write(`[build] ${sub.id}: no file changes produced (raw output at ${res.dumpPath}).\n`);
+      process.exitCode = 1;
+    }
     return;
   }
 

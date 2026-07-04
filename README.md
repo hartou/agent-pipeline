@@ -14,6 +14,8 @@ The client tests the **real output** (typecheck / Playwright / curl against the
 live stack). On failure, feedback goes back to the orchestrator, which re-plans;
 workers fix in place; re-test — until the client approves.
 
+> New here? Read [GUIDE.md](./GUIDE.md) for the full concept + a FAQ.
+
 ## Layout
 
 ```
