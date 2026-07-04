@@ -1,26 +1,44 @@
 #!/usr/bin/env node
-// Minimal multi-agent runner for Northfield Mentor.
+// agent-pipeline — deterministic, config-driven multi-agent delivery runner.
 //
-// Fugu (Sakana) acts as the ORCHESTRATOR: it reads the customer request + a task
-// spec and decomposes it into bounded worker sub-tasks. DeepSeek-4-pro and
-// gpt-4o-mini act as WORKERS: each produces a PROPOSAL (files/diffs as text) for
-// its assigned slice. Nothing is applied to the repo automatically — the human
-// reviewer (Copilot / PM) integrates accepted output. This mirrors the repo's
-// acceptance loop in agent-context/handoff.md.
+// Roles (real-world software team):
+//   Client (you/Copilot) -> talks only to the Orchestrator, tests the REAL
+//     output, approves/rejects.
+//   Orchestrator (Fugu)  -> decomposes a request into bounded worker subtasks.
+//   Workers (deepseek-4-pro, gpt-4o-mini) -> write product code DIRECTLY into the
+//     real repo. No sandbox, no staging folder, no "build then move".
 //
-// Usage:
-//   node tools/agent-runner/run.mjs orchestrate --task agent-tasks/<f>.md [--out agent-output/<f>.plan.json]
-//   node tools/agent-runner/run.mjs worker --provider deepseek|openai|fugu \
-//        --task agent-tasks/<f>.md [--context <file> ...] [--out agent-output/<f>.<provider>.md]
+// Everything repo-specific (providers, models, key ENV names, paths, QA commands,
+// stack facts, telemetry) lives in pipeline.config.json. Keys are referenced by
+// env-var NAME only and read from .env at call time; never stored or printed.
 //
-// Env (read from .env at repo root; never printed):
-//   SAKANA_FUGU_API_KEY, DEEPSEEK_API_KEY, DeepSeek_Model, OPENAI_API_KEY, OPENAI_MODEL
+// Verbs:
+//   init [--force]                              scaffold config + agent mode
+//   doctor                                      preflight: node, config, keys, QA
+//   plan   --task <f> [--feedback <f>]          orchestrate -> JSON plan
+//   build  --plan <p> --subtask <id> [--provider p] [--context f...]
+//   qa                                          run QA commands against real output
+//   run    --task <f>                           full loop plan->build->qa->retry
+//   report [--run <run_id>]                     aggregate telemetry per worker
+//   orchestrate | worker                        legacy aliases
 
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { readFile, writeFile, mkdir, appendFile } from 'node:fs/promises';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve, basename } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(process.cwd());
+const ENGINE_DIR = dirname(fileURLToPath(import.meta.url));
+const CONFIG_PATH = join(ENGINE_DIR, 'pipeline.config.json');
+
+function engineVersion() {
+  try {
+    return JSON.parse(readFileSync(join(ENGINE_DIR, 'package.json'), 'utf8')).version || '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
 
 function parseEnvFile(text) {
   const env = {};
@@ -43,45 +61,90 @@ async function loadEnv() {
   return { ...fileEnv, ...process.env };
 }
 
-function providerConfig(name, env) {
-  switch (name) {
-    case 'fugu':
-      return {
-        label: 'fugu',
-        baseUrl: 'https://api.sakana.ai/v1',
-        apiKey: env.SAKANA_FUGU_API_KEY,
-        model: env.FUGU_MODEL || 'fugu',
-        extra: { reasoning_effort: 'high' },
-      };
-    case 'deepseek':
-      return {
-        label: 'deepseek-4-pro',
-        baseUrl: 'https://api.deepseek.com/v1',
-        apiKey: env.DEEPSEEK_API_KEY,
-        model: env.DeepSeek_Model || env.DEEPSEEK_MODEL || 'deepseek-v4-pro',
-        extra: {},
-      };
-    case 'openai':
-      return {
-        label: 'gpt-4o-mini',
-        baseUrl: 'https://api.openai.com/v1',
-        apiKey: env.OPENAI_API_KEY,
-        model: env.OPENAI_MODEL || 'gpt-4o-mini',
-        extra: {},
-      };
-    default:
-      throw new Error(`Unknown provider: ${name}`);
+async function loadRegistry() {
+  if (!existsSync(CONFIG_PATH)) {
+    throw new Error(`Config not found: ${CONFIG_PATH}\nRun: node tools/agent-runner/run.mjs init`);
   }
+  return JSON.parse(await readFile(CONFIG_PATH, 'utf8'));
+}
+
+function allActors(reg) {
+  const out = {};
+  if (reg.actors?.orchestrator) out.orchestrator = { key: 'orchestrator', ...reg.actors.orchestrator };
+  for (const [k, v] of Object.entries(reg.actors?.workers || {})) out[k] = { key: k, ...v };
+  return out;
+}
+
+// Resolve by actor key ("orchestrator", "deepseek-4-pro"), by provider
+// ("deepseek", "openai", "sakana"), or by legacy alias ("fugu").
+function resolveActor(nameOrProvider, reg, env) {
+  const actors = allActors(reg);
+  let a = actors[nameOrProvider];
+  if (!a) {
+    const alias = { fugu: 'sakana' };
+    const want = alias[nameOrProvider] || nameOrProvider;
+    a = Object.values(actors).find((x) => x.provider === want);
+  }
+  if (!a) throw new Error(`Unknown actor/provider: ${nameOrProvider}`);
+  const model = a.modelEnv && env[a.modelEnv] ? env[a.modelEnv] : a.model;
+  return {
+    label: a.key,
+    role: a.role,
+    provider: a.provider,
+    baseUrl: a.baseUrl,
+    apiKeyEnv: a.apiKeyEnv,
+    apiKey: a.apiKeyEnv ? env[a.apiKeyEnv] : undefined,
+    model,
+    extra: a.params || {},
+    maxTokens: a.maxTokens || 4000,
+    pricing: a.pricing || null,
+  };
+}
+
+// ---- telemetry (Tier-1, auto-appended machine log) ----
+const TELEMETRY_COLUMNS = [
+  'ts_iso', 'engine_version', 'run_id', 'round', 'verb', 'actor', 'role',
+  'provider', 'model', 'prompt_tokens', 'completion_tokens', 'total_tokens',
+  'latency_ms', 'http_status', 'result', 'qa_passed', 'qa_failed',
+  'files_written', 'est_cost_usd', 'task_file', 'error',
+];
+
+function csvField(v) {
+  const s = v === undefined || v === null ? '' : String(v);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function estCost(pricing, usage) {
+  if (!pricing) return '';
+  const inRate = pricing.inputPer1M || 0;
+  const outRate = pricing.outputPer1M || 0;
+  if (inRate === 0 && outRate === 0) return '';
+  const p = usage?.prompt_tokens || 0;
+  const c = usage?.completion_tokens || 0;
+  return ((p / 1e6) * inRate + (c / 1e6) * outRate).toFixed(6);
+}
+
+async function logTelemetry(reg, row) {
+  const csvPath = reg?.telemetry?.csv;
+  if (!csvPath) return;
+  const abs = resolve(ROOT, csvPath);
+  await mkdir(dirname(abs), { recursive: true });
+  if (!existsSync(abs)) await writeFile(abs, TELEMETRY_COLUMNS.join(',') + '\n', 'utf8');
+  const full = { ts_iso: new Date().toISOString(), engine_version: engineVersion(), ...row };
+  await appendFile(abs, TELEMETRY_COLUMNS.map((c) => csvField(full[c])).join(',') + '\n', 'utf8');
 }
 
 async function chat(cfg, messages, maxTokens = 4000) {
-  if (!cfg.apiKey) throw new Error(`Missing API key for provider ${cfg.label}`);
+  if (!cfg.apiKey) {
+    throw new Error(`Missing API key for ${cfg.label}: set ${cfg.apiKeyEnv} in .env`);
+  }
   const body = {
     model: cfg.model,
     messages,
     max_completion_tokens: maxTokens,
     ...cfg.extra,
   };
+  const started = Date.now();
   const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -90,6 +153,7 @@ async function chat(cfg, messages, maxTokens = 4000) {
     },
     body: JSON.stringify(body),
   });
+  const latencyMs = Date.now() - started;
   const text = await res.text();
   if (!res.ok) throw new Error(`${cfg.label} HTTP ${res.status}: ${text.slice(0, 500)}`);
   let json;
@@ -100,7 +164,7 @@ async function chat(cfg, messages, maxTokens = 4000) {
   }
   const content = json?.choices?.[0]?.message?.content;
   if (!content) throw new Error(`${cfg.label} empty content: ${text.slice(0, 500)}`);
-  return { content, usage: json.usage };
+  return { content, usage: json.usage, latencyMs, httpStatus: res.status };
 }
 
 async function readContextFiles(files) {
@@ -116,25 +180,36 @@ async function readContextFiles(files) {
   return parts.join('\n\n---\n\n');
 }
 
+const BOOL_FLAGS = new Set(['force']);
 function parseArgs(argv) {
   const args = { _: [], context: [] };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--context') args.context.push(argv[++i]);
-    else if (a.startsWith('--')) args[a.slice(2)] = argv[++i];
-    else args._.push(a);
+    else if (a.startsWith('--')) {
+      const key = a.slice(2);
+      if (BOOL_FLAGS.has(key)) args[key] = true;
+      else args[key] = argv[++i];
+    } else args._.push(a);
   }
   return args;
 }
 
-const ORCHESTRATOR_SYSTEM = `You are Fugu, the orchestrator/PM for the Northfield Mentor repo.
+function workerRoster(reg) {
+  return Object.entries(reg.actors?.workers || {})
+    .map(([k, v]) => `- "${k}": ${(v.bestFor || []).join('; ') || 'general implementation'}.`)
+    .join('\n');
+}
+
+function orchestratorSystem(reg) {
+  return `You are the orchestrator/PM for the ${reg.project} repo.
 Read the customer request and the given task spec, then decompose the work into
 bounded worker sub-tasks. Assign each sub-task to the best-fit worker:
-- "deepseek-4-pro": broad, multi-file implementation slices.
-- "gpt-4o-mini": small, well-specified, focused edits.
+${workerRoster(reg)}
 Respect the task's stated scope and out-of-scope. Do NOT invent files or APIs.
 Output STRICT JSON only (no prose, no markdown fences) with this shape:
-{"epic":"...","subtasks":[{"id":"...","title":"...","worker":"deepseek-4-pro|gpt-4o-mini","files":["..."],"instructions":"...","acceptance":["..."]}],"review_focus":["..."]}`;
+{"epic":"...","subtasks":[{"id":"...","title":"...","worker":"<worker-key>","files":["..."],"instructions":"...","acceptance":["..."]}],"review_focus":["..."]}`;
+}
 
 const WORKER_SYSTEM = `You are an implementation worker for the Northfield Mentor repo
 (React 19 + Vite + Tailwind v4 web app; thin Node/TS node:http signaling service).
@@ -145,15 +220,11 @@ scope tight, no new heavy dependencies unless required, and never expose secrets
 to the browser. If something is ambiguous, list it under a "Flags" section instead
 of guessing. Keep it reviewable.`;
 
-const BUILD_SYSTEM = `You are an implementation worker building directly into the
-Northfield Mentor repo. Stack facts you MUST follow (do not deviate):
-- Signaling service uses Node's built-in \`node:http\` (NOT Express/Koa) and the
-  global \`fetch\` (NOT node-fetch). Config is read via \`loadConfig(env)\` in
-  config.ts (NOT dotenv). Routes are plain handlers \`(req,res,config)=>\` wired in
-  routing.ts's \`routes\` array. Responses use helpers in lib/response.ts
-  (\`readJsonBody\`, \`sendJson\`, \`sendError\`). ESM imports use \`.js\` extensions.
-- Web app is React 19 + Vite + Tailwind v4 + shadcn-style components in
-  src/components/ui. API calls go through src/lib/api.ts to VITE_SIGNALING_URL.
+function buildSystem(reg) {
+  const facts = (reg.stackFacts || []).map((f) => `- ${f}`).join('\n');
+  return `You are an implementation worker building directly into the ${reg.project} repo.
+Stack facts you MUST follow (do not deviate):
+${facts || '- (no stack facts configured)'}
 Implement ONLY your assigned slice and ONLY the listed files. Modify existing
 files minimally; never delete unrelated code; never expose secrets to the browser.
 Output ONLY file blocks in this EXACT format and nothing else (no prose, no
@@ -163,6 +234,7 @@ markdown fences):
 @@@END
 Repeat one block per file. Do NOT use ellipses ("...") or placeholders or omit any
 code — every block must contain the entire file, ready to write to disk.`;
+}
 
 function parseFileBlocks(text) {
   const blocks = [];
@@ -189,75 +261,352 @@ async function writeRepoFiles(files) {
   return written;
 }
 
+// ---- pipeline stages ----
+
+async function doOrchestrate({ reg, env, task, feedback, runId, round }) {
+  const cfg = resolveActor('orchestrator', reg, env);
+  const requestPath = reg.paths?.request ? resolve(ROOT, reg.paths.request) : null;
+  const request = requestPath && existsSync(requestPath) ? await readFile(requestPath, 'utf8') : '';
+  const userContent = feedback
+    ? `CUSTOMER REQUEST:\n\n${request}\n\n---\n\nTASK SPEC:\n\n${task}\n\n---\n\nCLIENT QA FEEDBACK — the previous build FAILED acceptance. Produce a minimal FIX plan (subtasks in the same JSON shape) that only addresses this failure; do not re-scope the whole epic:\n\n${feedback}`
+    : `CUSTOMER REQUEST:\n\n${request}\n\n---\n\nTASK SPEC:\n\n${task}`;
+  const messages = [
+    { role: 'system', content: orchestratorSystem(reg) },
+    { role: 'user', content: userContent },
+  ];
+  process.stderr.write(`[plan] ${cfg.label} (${cfg.model})...\n`);
+  let out;
+  try {
+    out = await chat(cfg, messages, cfg.maxTokens);
+  } catch (err) {
+    await logTelemetry(reg, {
+      run_id: runId, round, verb: 'plan', actor: cfg.label, role: cfg.role,
+      provider: cfg.provider, model: cfg.model, result: 'error', error: err.message,
+    });
+    throw err;
+  }
+  await logTelemetry(reg, {
+    run_id: runId, round, verb: 'plan', actor: cfg.label, role: cfg.role,
+    provider: cfg.provider, model: cfg.model,
+    prompt_tokens: out.usage?.prompt_tokens, completion_tokens: out.usage?.completion_tokens,
+    total_tokens: out.usage?.total_tokens, latency_ms: out.latencyMs, http_status: out.httpStatus,
+    result: 'plan_ok', est_cost_usd: estCost(cfg.pricing, out.usage),
+  });
+  return out.content;
+}
+
+async function doBuildSubtask({ reg, env, sub, providerOverride, contextFiles, runId, round }) {
+  const cfg = resolveActor(providerOverride || sub.worker, reg, env);
+  const existing = await readContextFiles((sub.files || []).filter((p) => existsSync(resolve(ROOT, p))));
+  const extra = contextFiles?.length ? await readContextFiles(contextFiles) : '';
+  const messages = [
+    { role: 'system', content: buildSystem(reg) },
+    {
+      role: 'user',
+      content: `SUBTASK ${sub.id}: ${sub.title}\n\nASSIGNED FILES (only these):\n${(sub.files || []).join('\n')}\n\nINSTRUCTIONS:\n${sub.instructions}\n\nACCEPTANCE:\n${(sub.acceptance || []).join('\n')}${extra ? `\n\n---\n\nREFERENCE / GROUND TRUTH:\n\n${extra}` : ''}\n\n---\n\nCURRENT CONTENTS OF EXISTING TARGET FILES:\n\n${existing || '(all target files are new)'}`,
+    },
+  ];
+  process.stderr.write(`[build:${cfg.label}] ${sub.id} calling ${cfg.model}...\n`);
+  let out;
+  try {
+    out = await chat(cfg, messages, cfg.maxTokens);
+  } catch (err) {
+    await logTelemetry(reg, {
+      run_id: runId, round, verb: 'build', actor: cfg.label, role: cfg.role,
+      provider: cfg.provider, model: cfg.model, result: 'error', error: err.message, task_file: sub.id,
+    });
+    throw err;
+  }
+  const files = parseFileBlocks(out.content);
+  let result = 'build_ok';
+  let written = [];
+  if (files.length === 0) {
+    const dump = join(reg.paths?.artifacts || 'agent-output', `${sub.id}.raw.txt`);
+    await mkdir(dirname(resolve(ROOT, dump)), { recursive: true });
+    await writeFile(resolve(ROOT, dump), out.content, 'utf8');
+    result = 'no_file_blocks';
+  } else {
+    written = await writeRepoFiles(files);
+  }
+  await logTelemetry(reg, {
+    run_id: runId, round, verb: 'build', actor: cfg.label, role: cfg.role,
+    provider: cfg.provider, model: cfg.model,
+    prompt_tokens: out.usage?.prompt_tokens, completion_tokens: out.usage?.completion_tokens,
+    total_tokens: out.usage?.total_tokens, latency_ms: out.latencyMs, http_status: out.httpStatus,
+    result, files_written: written.length, est_cost_usd: estCost(cfg.pricing, out.usage), task_file: sub.id,
+  });
+  if (result === 'no_file_blocks') throw new Error(`${cfg.label} returned no @@@FILE blocks for ${sub.id}`);
+  process.stderr.write(`[build:${cfg.label}] ${sub.id} wrote ${written.length} file(s): ${written.join(', ')}\n`);
+  return written;
+}
+
+// Runs the repo's real QA commands against the real output. Captures output so
+// failures can be fed back to the orchestrator.
+function runQaCommands(reg) {
+  const cmds = reg.qa?.commands || [];
+  const order = reg.qa?.order?.length ? reg.qa.order : cmds.map((c) => c.name);
+  const results = [];
+  for (const name of order) {
+    const cmd = cmds.find((c) => c.name === name);
+    if (!cmd) {
+      results.push({ name, ok: false, code: null, output: 'command not defined in qa.commands' });
+      continue;
+    }
+    process.stderr.write(`[qa] ${name}: ${cmd.run}\n`);
+    const r = spawnSync(cmd.run, { cwd: ROOT, shell: true, encoding: 'utf8' });
+    const output = `${r.stdout || ''}${r.stderr || ''}`;
+    process.stderr.write(output);
+    results.push({ name, ok: r.status === 0, code: r.status, output: output.slice(-4000) });
+  }
+  const passed = results.filter((r) => r.ok).length;
+  return { results, passed, failed: results.length - passed, allPass: results.every((r) => r.ok) };
+}
+
+// ---- telemetry reading / report ----
+
+function splitCsvLine(line) {
+  const out = [];
+  let cur = '';
+  let inQ = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (inQ) {
+      if (ch === '"' && line[i + 1] === '"') { cur += '"'; i += 1; }
+      else if (ch === '"') inQ = false;
+      else cur += ch;
+    } else if (ch === '"') inQ = true;
+    else if (ch === ',') { out.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+function parseCsv(text) {
+  const lines = text.split('\n').filter((l) => l.length);
+  if (!lines.length) return [];
+  const header = splitCsvLine(lines[0]);
+  return lines.slice(1).map((l) => {
+    const cells = splitCsvLine(l);
+    const row = {};
+    header.forEach((h, i) => { row[h] = cells[i] ?? ''; });
+    return row;
+  });
+}
+
+async function doReport({ reg, runId }) {
+  const csvPath = reg?.telemetry?.csv ? resolve(ROOT, reg.telemetry.csv) : null;
+  if (!csvPath || !existsSync(csvPath)) {
+    process.stdout.write('No telemetry recorded yet.\n');
+    return;
+  }
+  const rows = parseCsv(await readFile(csvPath, 'utf8')).filter((r) => !runId || r.run_id === runId);
+  const byActor = {};
+  for (const r of rows) {
+    if (r.verb !== 'plan' && r.verb !== 'build') continue;
+    const a = (byActor[r.actor] ||= { calls: 0, total: 0, latency: 0, cost: 0, files: 0 });
+    a.calls += 1;
+    a.total += Number(r.total_tokens) || 0;
+    a.latency += Number(r.latency_ms) || 0;
+    a.cost += Number(r.est_cost_usd) || 0;
+    a.files += Number(r.files_written) || 0;
+  }
+  const qaRows = rows.filter((r) => r.verb === 'qa');
+  const qaGreen = qaRows.filter((r) => r.result === 'qa_green').length;
+  process.stdout.write(`\n=== Pipeline report${runId ? ` (run ${runId})` : ''} ===\n`);
+  process.stdout.write('actor             calls   tokens    avg_ms    est_usd   files\n');
+  for (const [actor, a] of Object.entries(byActor)) {
+    process.stdout.write(
+      `${actor.padEnd(16)} ${String(a.calls).padStart(6)} ${String(a.total).padStart(8)} ${String(Math.round(a.latency / (a.calls || 1))).padStart(9)} ${a.cost.toFixed(4).padStart(10)} ${String(a.files).padStart(7)}\n`,
+    );
+  }
+  process.stdout.write(`QA runs: ${qaRows.length} (green: ${qaGreen})\n`);
+  const today = new Date().toISOString().slice(0, 10);
+  const totalFiles = Object.values(byActor).reduce((n, a) => n + a.files, 0);
+  process.stdout.write('\nDraft row for the curated ledger (annotate the <...> fields, then paste):\n');
+  process.stdout.write(`${today},"<priority>","<batch>","<job>","<provider>","<model>","run","<task_file>","<result>","<qa_decision>","<integration_decision>",${totalFiles},"<validation>","<what_worked>","<what_failed>","<prompt_adjustment>","<next_use>"\n`);
+}
+
+// ---- init / doctor ----
+
+async function doInit({ force }) {
+  const targets = [
+    { src: join(ENGINE_DIR, 'templates', 'pipeline.config.json'), dest: CONFIG_PATH, label: 'tools/agent-runner/pipeline.config.json' },
+    { src: join(ENGINE_DIR, 'templates', 'orchestrator.agent.md'), dest: join(ROOT, '.github', 'agents', 'orchestrator.agent.md'), label: '.github/agents/orchestrator.agent.md' },
+  ];
+  for (const t of targets) {
+    if (existsSync(t.dest) && !force) {
+      process.stderr.write(`[init] exists, skipped (use --force to overwrite): ${t.label}\n`);
+      continue;
+    }
+    await mkdir(dirname(t.dest), { recursive: true });
+    await writeFile(t.dest, await readFile(t.src, 'utf8'), 'utf8');
+    process.stderr.write(`[init] wrote ${t.label}\n`);
+  }
+  process.stderr.write('[init] done. Edit pipeline.config.json for this repo, add keys to .env, then: doctor\n');
+}
+
+function validateConfig(cfg) {
+  const errs = [];
+  const need = (obj, keys, path) => keys.forEach((k) => { if (obj?.[k] === undefined) errs.push(`missing ${path}.${k}`); });
+  need(cfg, ['version', 'project', 'paths', 'actors', 'qa', 'loop', 'telemetry'], 'config');
+  if (cfg.actors) {
+    need(cfg.actors, ['client', 'orchestrator', 'workers'], 'actors');
+    const api = { orchestrator: cfg.actors.orchestrator, ...(cfg.actors.workers || {}) };
+    for (const [k, a] of Object.entries(api)) {
+      if (a) need(a, ['provider', 'baseUrl', 'model', 'apiKeyEnv'], `actors.${k}`);
+    }
+  }
+  return errs;
+}
+
+async function doDoctor({ reg, env }) {
+  let ok = true;
+  const line = (sym, msg) => process.stdout.write(`${sym} ${msg}\n`);
+  const major = Number(process.versions.node.split('.')[0]);
+  if (major >= 20) line('✓', `node ${process.versions.node}`);
+  else { line('✗', `node ${process.versions.node} (need >=20)`); ok = false; }
+  const errs = validateConfig(reg);
+  if (errs.length === 0) line('✓', 'config schema');
+  else { errs.forEach((e) => line('✗', e)); ok = false; }
+  for (const a of Object.values(allActors(reg))) {
+    if (a.apiKeyEnv && env[a.apiKeyEnv]) line('✓', `${a.key}: key ${a.apiKeyEnv} present`);
+    else { line('✗', `${a.key}: missing ${a.apiKeyEnv} in .env`); ok = false; }
+  }
+  const names = new Set((reg.qa?.commands || []).map((c) => c.name));
+  for (const n of reg.qa?.order || []) {
+    if (names.has(n)) line('✓', `qa command: ${n}`);
+    else { line('✗', `qa order references unknown command: ${n}`); ok = false; }
+  }
+  process.stdout.write(ok ? '\nDOCTOR: all green\n' : '\nDOCTOR: issues found\n');
+  if (!ok) process.exitCode = 1;
+}
+
+// ---- full loop ----
+
+async function doRun({ reg, env, task, taskFile }) {
+  const runId = `run-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+  const artifacts = reg.paths?.artifacts || 'agent-output';
+  const base = basename(taskFile, '.md');
+  const maxRounds = reg.loop?.maxRounds || 1;
+  let feedback = '';
+  for (let round = 1; round <= maxRounds; round += 1) {
+    process.stderr.write(`\n[run ${runId}] round ${round}/${maxRounds}\n`);
+    const planJson = await doOrchestrate({ reg, env, task, feedback, runId, round });
+    const planPath = resolve(ROOT, join(artifacts, `${base}.plan.json`));
+    await mkdir(dirname(planPath), { recursive: true });
+    await writeFile(planPath, planJson, 'utf8');
+    let plan;
+    try {
+      plan = JSON.parse(planJson);
+    } catch {
+      process.stderr.write(`[run] plan was not valid JSON (saved ${planPath}); stopping.\n`);
+      await logTelemetry(reg, { run_id: runId, round, verb: 'qa', actor: 'client', role: 'client', provider: 'local', result: 'plan_invalid', task_file: taskFile });
+      process.exitCode = 1;
+      return;
+    }
+    for (const sub of plan.subtasks || []) {
+      await doBuildSubtask({ reg, env, sub, runId, round });
+    }
+    const qa = runQaCommands(reg);
+    await logTelemetry(reg, {
+      run_id: runId, round, verb: 'qa', actor: 'client', role: 'client', provider: 'local',
+      result: qa.allPass ? 'qa_green' : 'qa_red', qa_passed: qa.passed, qa_failed: qa.failed, task_file: taskFile,
+    });
+    if (qa.allPass) {
+      process.stderr.write(`\n[run ${runId}] QA GREEN on round ${round}. Client should review the real output and approve.\n`);
+      await doReport({ reg, runId });
+      return;
+    }
+    const failing = qa.results.filter((r) => !r.ok);
+    feedback = `QA failed on round ${round}. Failing checks: ${failing.map((f) => f.name).join(', ')}.\n\n`
+      + failing.map((f) => {
+        const cmd = (reg.qa?.commands || []).find((c) => c.name === f.name);
+        return `### ${f.name} (exit ${f.code})\ncommand: ${cmd?.run}\noutput (tail):\n${f.output || ''}`;
+      }).join('\n\n')
+      + '\n\nProduce a minimal fix plan targeting ONLY these failures.';
+    const fbPath = resolve(ROOT, join(artifacts, `${base}.feedback.r${round}.md`));
+    await writeFile(fbPath, feedback, 'utf8');
+    process.stderr.write(`[run ${runId}] QA RED (${failing.map((f) => f.name).join(', ')}); wrote ${fbPath}; re-planning.\n`);
+  }
+  process.stderr.write(`\n[run ${runId}] exhausted ${maxRounds} round(s) without QA green.\n`);
+  await doReport({ reg, runId });
+  process.exitCode = 1;
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const mode = args._[0];
+
+  if (mode === 'init') {
+    await doInit({ force: !!args.force });
+    return;
+  }
+
   const env = await loadEnv();
 
-  if (mode === 'orchestrate') {
-    if (!args.task) throw new Error('orchestrate requires --task');
-    const cfg = providerConfig('fugu', env);
-    const request = existsSync(join(ROOT, 'agent-tasks/webrtc-customer-request.md'))
-      ? await readFile(join(ROOT, 'agent-tasks/webrtc-customer-request.md'), 'utf8')
-      : '';
+  if (mode === 'doctor') {
+    await doDoctor({ reg: await loadRegistry(), env });
+    return;
+  }
+
+  if (mode === 'plan' || mode === 'orchestrate') {
+    if (!args.task) throw new Error(`${mode} requires --task`);
+    const reg = await loadRegistry();
     const task = await readFile(resolve(ROOT, args.task), 'utf8');
     const feedback = args.feedback && existsSync(resolve(ROOT, args.feedback))
       ? await readFile(resolve(ROOT, args.feedback), 'utf8')
       : '';
-    const userContent = feedback
-      ? `CUSTOMER REQUEST:\n\n${request}\n\n---\n\nTASK SPEC:\n\n${task}\n\n---\n\nCLIENT QA FEEDBACK — the previous build FAILED acceptance. Produce a minimal FIX plan (subtasks in the same JSON shape) that only addresses this failure; do not re-scope the whole epic:\n\n${feedback}`
-      : `CUSTOMER REQUEST:\n\n${request}\n\n---\n\nTASK SPEC:\n\n${task}`;
-    const messages = [
-      { role: 'system', content: ORCHESTRATOR_SYSTEM },
-      { role: 'user', content: userContent },
-    ];
-    process.stderr.write(`[orchestrate] calling ${cfg.label} (${cfg.model})...\n`);
-    const { content, usage } = await chat(cfg, messages, 12000);
-    const out = args.out || `agent-output/${basename(args.task, '.md')}.plan.json`;
+    const content = await doOrchestrate({ reg, env, task, feedback, runId: `plan-${Date.now()}`, round: 0 });
+    const out = args.out || join(reg.paths?.artifacts || 'agent-output', `${basename(args.task, '.md')}.plan.json`);
     await mkdir(dirname(resolve(ROOT, out)), { recursive: true });
     await writeFile(resolve(ROOT, out), content, 'utf8');
-    process.stderr.write(`[orchestrate] wrote ${out} (usage: ${JSON.stringify(usage)})\n`);
+    process.stderr.write(`[plan] wrote ${out}\n`);
     process.stdout.write(content + '\n');
     return;
   }
 
   if (mode === 'build') {
     if (!args.plan || !args.subtask) throw new Error('build requires --plan and --subtask');
+    const reg = await loadRegistry();
     const plan = JSON.parse(await readFile(resolve(ROOT, args.plan), 'utf8'));
     const sub = (plan.subtasks || []).find((s) => s.id === args.subtask);
     if (!sub) throw new Error(`Subtask ${args.subtask} not found in plan`);
-    // Client can override the worker (e.g. --provider deepseek to always use DeepSeek-4-pro).
-    const providerName = args.provider
-      ? args.provider
-      : sub.worker === 'deepseek-4-pro' ? 'deepseek' : 'openai';
-    const cfg = providerConfig(providerName, env);
-    // Feed the worker the current contents of its target files so it edits minimally.
-    const existing = await readContextFiles((sub.files || []).filter((p) => existsSync(resolve(ROOT, p))));
-    const extra = args.context.length ? await readContextFiles(args.context) : '';
-    const messages = [
-      { role: 'system', content: BUILD_SYSTEM },
-      {
-        role: 'user',
-        content: `SUBTASK ${sub.id}: ${sub.title}\n\nASSIGNED FILES (only these):\n${(sub.files || []).join('\n')}\n\nINSTRUCTIONS:\n${sub.instructions}\n\nACCEPTANCE:\n${(sub.acceptance || []).join('\n')}${extra ? `\n\n---\n\nREFERENCE / GROUND TRUTH:\n\n${extra}` : ''}\n\n---\n\nCURRENT CONTENTS OF EXISTING TARGET FILES:\n\n${existing || '(all target files are new)'}`,
-      },
-    ];
-    process.stderr.write(`[build:${cfg.label}] ${sub.id} calling ${cfg.model}...\n`);
-    const { content, usage } = await chat(cfg, messages, 12000);
-    const files = parseFileBlocks(content);
-    if (files.length === 0) {
-      const dump = `agent-output/${sub.id}.raw.txt`;
-      await mkdir(dirname(resolve(ROOT, dump)), { recursive: true });
-      await writeFile(resolve(ROOT, dump), content, 'utf8');
-      throw new Error(`${cfg.label} returned no @@@FILE blocks (saved to ${dump})`);
-    }
-    const written = await writeRepoFiles(files);
-    process.stderr.write(`[build:${cfg.label}] ${sub.id} wrote ${written.length} file(s): ${written.join(', ')} (usage: ${JSON.stringify(usage)})\n`);
+    await doBuildSubtask({ reg, env, sub, providerOverride: args.provider, contextFiles: args.context, runId: `build-${Date.now()}`, round: 0 });
+    return;
+  }
+
+  if (mode === 'qa') {
+    const reg = await loadRegistry();
+    const qa = runQaCommands(reg);
+    await logTelemetry(reg, {
+      run_id: `qa-${Date.now()}`, round: 0, verb: 'qa', actor: 'client', role: 'client',
+      provider: 'local', result: qa.allPass ? 'qa_green' : 'qa_red', qa_passed: qa.passed, qa_failed: qa.failed,
+    });
+    process.stdout.write(qa.allPass ? 'QA: green\n' : `QA: red (${qa.results.filter((r) => !r.ok).map((r) => r.name).join(', ')})\n`);
+    if (!qa.allPass) process.exitCode = 1;
+    return;
+  }
+
+  if (mode === 'run') {
+    if (!args.task) throw new Error('run requires --task');
+    const reg = await loadRegistry();
+    const task = await readFile(resolve(ROOT, args.task), 'utf8');
+    await doRun({ reg, env, task, taskFile: args.task });
+    return;
+  }
+
+  if (mode === 'report') {
+    await doReport({ reg: await loadRegistry(), runId: args.run });
     return;
   }
 
   if (mode === 'worker') {
+    // Legacy proposal mode: writes a Markdown proposal to artifacts. NOT used by
+    // `run` (workers write real files via build). Kept as an escape hatch.
     if (!args.provider || !args.task) throw new Error('worker requires --provider and --task');
-    const cfg = providerConfig(args.provider, env);
+    const reg = await loadRegistry();
+    const cfg = resolveActor(args.provider, reg, env);
     const task = await readFile(resolve(ROOT, args.task), 'utf8');
     const context = args.context.length ? await readContextFiles(args.context) : '';
     const messages = [
@@ -265,15 +614,15 @@ async function main() {
       { role: 'user', content: `TASK:\n\n${task}${context ? `\n\n---\n\nCONTEXT FILES:\n\n${context}` : ''}` },
     ];
     process.stderr.write(`[worker:${cfg.label}] calling ${cfg.model}...\n`);
-    const { content, usage } = await chat(cfg, messages, 6000);
-    const out = args.out || `agent-output/${basename(args.task, '.md')}.${args.provider}.md`;
-    await mkdir(dirname(resolve(ROOT, out)), { recursive: true });
-    await writeFile(resolve(ROOT, out), content, 'utf8');
-    process.stderr.write(`[worker:${cfg.label}] wrote ${out} (usage: ${JSON.stringify(usage)})\n`);
+    const out = await chat(cfg, messages, cfg.maxTokens);
+    const dest = args.out || join(reg.paths?.artifacts || 'agent-output', `${basename(args.task, '.md')}.${args.provider}.md`);
+    await mkdir(dirname(resolve(ROOT, dest)), { recursive: true });
+    await writeFile(resolve(ROOT, dest), out.content, 'utf8');
+    process.stderr.write(`[worker:${cfg.label}] wrote ${dest}\n`);
     return;
   }
 
-  throw new Error('Usage: run.mjs <orchestrate|worker> --task <file> [--provider <p>] [--context <f> ...] [--out <file>]');
+  throw new Error('Usage: run.mjs <init|doctor|plan|build|qa|run|report|worker> ...');
 }
 
 main().catch((err) => {

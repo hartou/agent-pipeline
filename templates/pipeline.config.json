@@ -1,0 +1,78 @@
+{
+  "$schema": "../pipeline.config.schema.json",
+  "version": 1,
+  "project": "your-project",
+  "paths": {
+    "request": "agent-tasks/customer-request.md",
+    "tasks": "agent-tasks",
+    "artifacts": "agent-output"
+  },
+  "actors": {
+    "client": {
+      "role": "client",
+      "runtime": "copilot",
+      "authorsProductCode": false,
+      "talksOnlyTo": "orchestrator",
+      "responsibilities": ["intake", "qa", "acceptance", "integration"]
+    },
+    "orchestrator": {
+      "role": "orchestrator",
+      "provider": "sakana",
+      "baseUrl": "https://api.sakana.ai/v1",
+      "model": "fugu",
+      "modelEnv": "FUGU_MODEL",
+      "apiKeyEnv": "SAKANA_FUGU_API_KEY",
+      "maxTokens": 12000,
+      "params": { "reasoning_effort": "high" },
+      "pricing": { "inputPer1M": 0, "outputPer1M": 0 }
+    },
+    "workers": {
+      "deepseek-4-pro": {
+        "role": "worker",
+        "provider": "deepseek",
+        "baseUrl": "https://api.deepseek.com/v1",
+        "model": "deepseek-v4-pro",
+        "modelEnv": "DeepSeek_Model",
+        "apiKeyEnv": "DEEPSEEK_API_KEY",
+        "maxTokens": 12000,
+        "params": {},
+        "pricing": { "inputPer1M": 0, "outputPer1M": 0 },
+        "bestFor": ["broad multi-file scaffolding", "first drafts"]
+      },
+      "gpt-4o-mini": {
+        "role": "worker",
+        "provider": "openai",
+        "baseUrl": "https://api.openai.com/v1",
+        "model": "gpt-4o-mini",
+        "modelEnv": "OPENAI_MODEL",
+        "apiKeyEnv": "OPENAI_API_KEY",
+        "maxTokens": 12000,
+        "params": {},
+        "pricing": { "inputPer1M": 0, "outputPer1M": 0 },
+        "bestFor": ["scoped repo-local edits", "reviews"]
+      }
+    }
+  },
+  "stackFacts": [
+    "Describe your stack rules here, one fact per line, e.g. framework, build tool, conventions.",
+    "State any hard rules (secrets handling, forbidden APIs, required patterns).",
+    "The build worker receives these verbatim, so be precise and version-specific."
+  ],
+  "qa": {
+    "commands": [
+      { "name": "typecheck", "run": "npm run typecheck" },
+      { "name": "test", "run": "npm test" },
+      { "name": "smoke", "run": "npm run smoke", "requiresStack": true }
+    ],
+    "order": ["typecheck", "test", "smoke"]
+  },
+  "loop": {
+    "maxRounds": 3,
+    "stopOn": "qa-green",
+    "maxCostUsd": 0
+  },
+  "telemetry": {
+    "csv": "agent-context/telemetry.csv",
+    "curatedCsv": "agent-context/model-worker-performance.csv"
+  }
+}

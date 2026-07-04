@@ -1,0 +1,119 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://northfield.dev/schemas/pipeline.config.schema.json",
+  "title": "Agent Pipeline Config",
+  "description": "Deterministic, repo-agnostic configuration for the multi-agent delivery pipeline. Secrets are NEVER stored here; only the NAME of the env var that holds each key.",
+  "type": "object",
+  "required": ["version", "project", "paths", "actors", "qa", "loop", "telemetry"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "integer", "const": 1 },
+    "project": { "type": "string", "minLength": 1 },
+    "paths": {
+      "type": "object",
+      "required": ["request", "tasks", "artifacts"],
+      "additionalProperties": false,
+      "properties": {
+        "request": { "type": "string", "description": "Repo-relative path to the customer request file (optional context prepended to orchestration)." },
+        "tasks": { "type": "string", "description": "Directory holding task specs." },
+        "artifacts": { "type": "string", "description": "Directory for plans, feedback, and raw dumps. NEVER product code." }
+      }
+    },
+    "actors": {
+      "type": "object",
+      "required": ["client", "orchestrator", "workers"],
+      "additionalProperties": false,
+      "properties": {
+        "client": {
+          "type": "object",
+          "required": ["role"],
+          "properties": {
+            "role": { "const": "client" },
+            "runtime": { "type": "string" },
+            "authorsProductCode": { "type": "boolean" },
+            "talksOnlyTo": { "type": "string" },
+            "responsibilities": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "orchestrator": { "$ref": "#/definitions/apiActor" },
+        "workers": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "$ref": "#/definitions/apiActor" }
+        }
+      }
+    },
+    "stackFacts": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Repo-specific stack rules fed to the build worker so the engine stays generic."
+    },
+    "qa": {
+      "type": "object",
+      "required": ["commands", "order"],
+      "additionalProperties": false,
+      "properties": {
+        "commands": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "run"],
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string" },
+              "run": { "type": "string" },
+              "requiresStack": { "type": "boolean" }
+            }
+          }
+        },
+        "order": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "loop": {
+      "type": "object",
+      "required": ["maxRounds", "stopOn"],
+      "additionalProperties": false,
+      "properties": {
+        "maxRounds": { "type": "integer", "minimum": 1 },
+        "stopOn": { "type": "string", "enum": ["qa-green"] },
+        "maxCostUsd": { "type": "number", "minimum": 0, "description": "0 disables the budget cap." }
+      }
+    },
+    "telemetry": {
+      "type": "object",
+      "required": ["csv"],
+      "additionalProperties": false,
+      "properties": {
+        "csv": { "type": "string", "description": "Tier-1 auto-appended machine telemetry." },
+        "curatedCsv": { "type": "string", "description": "Tier-2 hand-curated acceptance ledger; engine only drafts rows." }
+      }
+    }
+  },
+  "definitions": {
+    "apiActor": {
+      "type": "object",
+      "required": ["role", "provider", "baseUrl", "model", "apiKeyEnv"],
+      "additionalProperties": false,
+      "properties": {
+        "role": { "type": "string", "enum": ["orchestrator", "worker"] },
+        "provider": { "type": "string" },
+        "baseUrl": { "type": "string", "format": "uri" },
+        "model": { "type": "string" },
+        "modelEnv": { "type": "string", "description": "Optional env var that overrides `model` when set." },
+        "apiKeyEnv": { "type": "string", "description": "Name of the env var holding the API key. The key itself is NEVER stored here." },
+        "maxTokens": { "type": "integer", "minimum": 1 },
+        "params": { "type": "object" },
+        "pricing": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "inputPer1M": { "type": "number", "minimum": 0 },
+            "outputPer1M": { "type": "number", "minimum": 0 }
+          }
+        },
+        "bestFor": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

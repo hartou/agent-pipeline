@@ -1,0 +1,83 @@
+{
+  "$schema": "./pipeline.config.schema.json",
+  "version": 1,
+  "project": "northfield-mentor",
+  "paths": {
+    "request": "agent-tasks/webrtc-customer-request.md",
+    "tasks": "agent-tasks",
+    "artifacts": "agent-output"
+  },
+  "actors": {
+    "client": {
+      "role": "client",
+      "runtime": "copilot",
+      "authorsProductCode": false,
+      "talksOnlyTo": "orchestrator",
+      "responsibilities": ["intake", "qa", "acceptance", "integration"]
+    },
+    "orchestrator": {
+      "role": "orchestrator",
+      "provider": "sakana",
+      "baseUrl": "https://api.sakana.ai/v1",
+      "model": "fugu",
+      "modelEnv": "FUGU_MODEL",
+      "apiKeyEnv": "SAKANA_FUGU_API_KEY",
+      "maxTokens": 12000,
+      "params": { "reasoning_effort": "high" },
+      "pricing": { "inputPer1M": 0, "outputPer1M": 0 }
+    },
+    "workers": {
+      "deepseek-4-pro": {
+        "role": "worker",
+        "provider": "deepseek",
+        "baseUrl": "https://api.deepseek.com/v1",
+        "model": "deepseek-v4-pro",
+        "modelEnv": "DeepSeek_Model",
+        "apiKeyEnv": "DEEPSEEK_API_KEY",
+        "maxTokens": 12000,
+        "params": {},
+        "pricing": { "inputPer1M": 0, "outputPer1M": 0 },
+        "bestFor": ["broad multi-file scaffolding", "first drafts"]
+      },
+      "gpt-4o-mini": {
+        "role": "worker",
+        "provider": "openai",
+        "baseUrl": "https://api.openai.com/v1",
+        "model": "gpt-4o-mini",
+        "modelEnv": "OPENAI_MODEL",
+        "apiKeyEnv": "OPENAI_API_KEY",
+        "maxTokens": 12000,
+        "params": {},
+        "pricing": { "inputPer1M": 0, "outputPer1M": 0 },
+        "bestFor": ["scoped repo-local edits", "reviews"]
+      }
+    }
+  },
+  "stackFacts": [
+    "Signaling service uses Node's built-in `node:http` (NOT Express/Koa) and the global `fetch` (NOT node-fetch).",
+    "Config is read via `loadConfig(env)` in config.ts (NOT dotenv).",
+    "Routes are plain handlers `(req,res,config)=>` wired in routing.ts's `routes` array.",
+    "Responses use helpers in lib/response.ts (`readJsonBody`, `sendJson`, `sendError`). ESM imports use `.js` extensions.",
+    "Web app is React 19 + Vite + Tailwind v4 + shadcn-style components in src/components/ui.",
+    "API calls go through src/lib/api.ts to VITE_SIGNALING_URL.",
+    "Never expose the TRTC SecretKey to the browser; the SecretKey lives only in the signaling service env.",
+    "DeepSeek model is always deepseek-v4-pro, never deepseek-chat."
+  ],
+  "qa": {
+    "commands": [
+      { "name": "typecheck-web", "run": "npm run typecheck -w apps/web" },
+      { "name": "typecheck-sig", "run": "npm run typecheck -w services/trtc-signaling" },
+      { "name": "smoke", "run": "npm run smoke -w apps/web", "requiresStack": true }
+    ],
+    "order": ["typecheck-web", "typecheck-sig", "smoke"]
+  },
+  "loop": {
+    "maxRounds": 3,
+    "stopOn": "qa-green",
+    "maxCostUsd": 0
+  },
+  "telemetry": {
+    "csv": "agent-context/telemetry.csv",
+    "curatedCsv": "agent-context/model-worker-performance.csv"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "name": "agent-pipeline",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Deterministic, config-driven multi-agent delivery pipeline (client -> orchestrator -> workers). Zero runtime dependencies.",
+  "type": "module",
+  "bin": {
+    "agent-pipeline": "./run.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "doctor": "node run.mjs doctor"
+  },
+  "files": [
+    "run.mjs",
+    "pipeline.config.schema.json",
+    "templates/",
+    "README.md"
+  ]
+}
