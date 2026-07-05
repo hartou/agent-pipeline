@@ -13,6 +13,7 @@ the Northfield app repo.
 - Current visibility: public.
 - npm package: `@hartou/agent-pipeline`.
 - Latest published npm version: `0.2.4`.
+- Next package version prepared locally: `0.2.5`.
 - Latest release commit on `main`: `1aeed3a Fix DeepSeek model env casing`.
 - Public install command:
 
@@ -57,6 +58,8 @@ Installs into a target repo:
 - `tools/agent-runner/` with `run.mjs`, templates, schema, docs, Dockerfile.
 - `.github/agents/orchestrator.agent.md` via `run.mjs init`.
 - `tools/agent-runner/pipeline.config.json` via `run.mjs init`.
+- `.github/instructions/agent-pipeline.instructions.md` via `run.mjs init` so
+  pipeline guidance is present even when existing repo instructions are skipped.
 - `.github/skills/agent-orchestrator-installer/` when `--skill` is used. This
   is still the default behavior; `--skill` makes the intent explicit. Use
   `--skip-skill` to opt out.
@@ -85,6 +88,10 @@ Yes, installation adds Copilot-facing context and instructions:
 
 - `.github/agents/orchestrator.agent.md` defines the selectable Orchestrator/PM
   mode for Copilot Chat.
+- `.github/instructions/agent-pipeline.instructions.md` is the pipeline-specific
+  companion instruction file. It lets brownfield repos keep existing
+  `.github/copilot-instructions.md` and `AGENTS.md` untouched while still teaching
+  Copilot where to find the pipeline workflow.
 - `AGENTS.md` gives repo-wide operating rules and role boundaries.
 - `agent-context/current-state.md`, `next-tasks.md`,
   `architecture-decisions.md`, `review-checklist.md`, and `handoff.md` provide
@@ -94,10 +101,12 @@ Yes, installation adds Copilot-facing context and instructions:
 - The installer skill itself remains available in `.github/skills/` when using
   the skill-installed path.
 
-The npm/bootstrap path now adds an optional `.github/copilot-instructions.md`
-template when missing. It points Copilot to `AGENTS.md` and the compact
-`agent-context/` files for users who stay in the default Copilot agent instead of
-selecting Orchestrator mode.
+The npm/bootstrap path now adds `.github/instructions/agent-pipeline.instructions.md`
+and an optional `.github/copilot-instructions.md` template when missing. The
+companion instruction is the stable pipeline guidance surface; the optional main
+instruction points Copilot to it, `AGENTS.md`, and the compact `agent-context/`
+files for users who stay in the default Copilot agent instead of selecting
+Orchestrator mode.
 
 ## Brownfield Support
 
@@ -110,6 +119,8 @@ Current behavior is conservative:
   `--force` is passed.
 - Existing `AGENTS.md` is skipped, so repo-owned instructions are not overwritten.
 - Existing `.github/copilot-instructions.md` is skipped.
+- Existing `.github/instructions/agent-pipeline.instructions.md` is skipped, but
+  missing repos receive it even when other instruction files already exist.
 - Existing starter context files are skipped individually.
 - `run.mjs init` skips existing `pipeline.config.json` and
   `.github/agents/orchestrator.agent.md` unless `--force` is passed.
@@ -130,6 +141,8 @@ custom QA commands, stack facts, pricing, and container settings.
 Then manually merge repo-specific rules into:
 
 - `AGENTS.md` if it already existed.
+- `.github/instructions/agent-pipeline.instructions.md` if the repo needs local
+  overrides for the pipeline workflow.
 - `tools/agent-runner/pipeline.config.json`.
 - `agent-context/architecture-decisions.md`.
 - `agent-context/review-checklist.md`.
@@ -154,6 +167,10 @@ replace existing runner/config/agent files.
 - Package `0.2.3` added `img/agent-pipeline-architecture.png` to the README and
   npm package.
 - Package `0.2.4` fixed the DeepSeek model env var casing to `DEEPSEEK_MODEL`.
+- Package `0.2.5` prepares the companion
+  `.github/instructions/agent-pipeline.instructions.md` install path so brownfield
+  repos keep existing instructions untouched while still receiving pipeline
+  guidance.
 
 Recommended public command:
 

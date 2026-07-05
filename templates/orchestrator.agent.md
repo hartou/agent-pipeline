@@ -77,5 +77,9 @@ and approval. See `tools/agent-runner/GUIDE.md` for the full model.
 
 ## Preflight
 
+Before running the pipeline, read `.github/instructions/agent-pipeline.instructions.md`
+when it exists, then read the repo-owned guidance and `agent-context/` files it
+references.
+
 Before a run, verify config + keys deterministically:
 `node tools/agent-runner/run.mjs doctor`

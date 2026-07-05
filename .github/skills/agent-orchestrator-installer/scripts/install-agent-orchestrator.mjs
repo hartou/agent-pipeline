@@ -189,7 +189,7 @@ async function scaffoldRepoFiles({ targetRoot, skipAgentsMd }) {
   );
   await writeIfMissing(
     join(targetRoot, '.github', 'copilot-instructions.md'),
-    '# Copilot Instructions\n\nBefore making agent-pipeline changes in this repo, read:\n\n- `AGENTS.md`\n- `agent-context/current-state.md`\n- `agent-context/next-tasks.md`\n- `agent-context/architecture-decisions.md`\n- `agent-context/review-checklist.md`\n- `agent-context/handoff.md`\n\nUse Orchestrator mode for implementation work: Copilot handles intake and QA, Fugu plans, workers implement, and `tools/agent-runner/run.mjs` stays wiring only.\n',
+    '# Copilot Instructions\n\nBefore making agent-pipeline changes in this repo, read:\n\n- `.github/instructions/agent-pipeline.instructions.md`\n- `AGENTS.md`\n- `agent-context/current-state.md`\n- `agent-context/next-tasks.md`\n- `agent-context/architecture-decisions.md`\n- `agent-context/review-checklist.md`\n- `agent-context/handoff.md`\n\nUse Orchestrator mode for implementation work: Copilot handles intake and QA, Fugu plans, workers implement, and `tools/agent-runner/run.mjs` stays wiring only.\n',
   );
 
   if (!skipAgentsMd) {
