@@ -1,6 +1,6 @@
 # Public Release Handoff
 
-Last updated: 2026-07-04
+Last updated: 2026-07-05
 
 This repo is the standalone `agent-pipeline` project extracted from
 `northfield-mentor`. Continue public release and npm packaging work here, not in
@@ -10,7 +10,21 @@ the Northfield app repo.
 
 - GitHub repo: `hartou/agent-pipeline`.
 - Default branch: `main`.
-- Current visibility at last check: private.
+- Current visibility: public.
+- npm package: `@hartou/agent-pipeline`.
+- Latest published npm version: `0.2.4`.
+- Latest release commit on `main`: `1aeed3a Fix DeepSeek model env casing`.
+- Public install command:
+
+```sh
+npx --yes --prefer-online @hartou/agent-pipeline init --target . --skill
+```
+
+- Latest public install validation repo:
+  `~/dev/new_repos/agent-pipeline-public-024-deepseek-test-20260705-002958`.
+- Latest validation result: generated `.env.agent-pipeline.example` and
+  `tools/agent-runner/pipeline.config.json` use `DEEPSEEK_MODEL`, not
+  `DeepSeek_Model`; `doctor` ended with `DOCTOR: all green` using dummy env vars.
 - Merged setup PRs:
   - #1 `agent-orchestrator-installer-skill`: added reusable Copilot skill and
     installer script.
@@ -43,10 +57,25 @@ Installs into a target repo:
 - `tools/agent-runner/` with `run.mjs`, templates, schema, docs, Dockerfile.
 - `.github/agents/orchestrator.agent.md` via `run.mjs init`.
 - `tools/agent-runner/pipeline.config.json` via `run.mjs init`.
+- `.github/skills/agent-orchestrator-installer/` when `--skill` is used. This
+  is still the default behavior; `--skill` makes the intent explicit. Use
+  `--skip-skill` to opt out.
+- `.github/copilot-instructions.md` if missing.
 - starter `agent-context/` files.
 - empty `agent-tasks/` and `agent-output/` directories.
 - starter `AGENTS.md` only if the target repo does not already have one.
 - `.env.agent-pipeline.example` with env var names only.
+
+Current generated env names:
+
+```sh
+SAKANA_FUGU_API_KEY=
+DEEPSEEK_API_KEY=
+OPENAI_API_KEY=
+FUGU_MODEL=fugu
+DEEPSEEK_MODEL=deepseek-v4-pro
+OPENAI_MODEL=gpt-4o-mini
+```
 
 It never writes real API keys and does not print `.env` contents.
 
@@ -65,12 +94,10 @@ Yes, installation adds Copilot-facing context and instructions:
 - The installer skill itself remains available in `.github/skills/` when using
   the skill-installed path.
 
-Public-release recommendation: add an optional `.github/copilot-instructions.md`
-template during the npm/bootstrap work. It should be short and point Copilot to
-`AGENTS.md` plus the compact `agent-context/` files. Right now the custom agent
-mode and `AGENTS.md` carry the main instruction load, so the installer works, but
-the Copilot instruction file would make the repo friendlier for users who stay in
-the default Copilot agent instead of selecting Orchestrator mode.
+The npm/bootstrap path now adds an optional `.github/copilot-instructions.md`
+template when missing. It points Copilot to `AGENTS.md` and the compact
+`agent-context/` files for users who stay in the default Copilot agent instead of
+selecting Orchestrator mode.
 
 ## Brownfield Support
 
@@ -79,7 +106,10 @@ Yes, this can be added to a brownfield repo.
 Current behavior is conservative:
 
 - Existing `tools/agent-runner/` is skipped unless `--force` is passed.
+- Existing `.github/skills/agent-orchestrator-installer/` is skipped unless
+  `--force` is passed.
 - Existing `AGENTS.md` is skipped, so repo-owned instructions are not overwritten.
+- Existing `.github/copilot-instructions.md` is skipped.
 - Existing starter context files are skipped individually.
 - `run.mjs init` skips existing `pipeline.config.json` and
   `.github/agents/orchestrator.agent.md` unless `--force` is passed.
@@ -89,8 +119,13 @@ Brownfield recommended flow:
 ```sh
 cd /path/to/existing-repo
 git status --short
-node .github/skills/agent-orchestrator-installer/scripts/install-agent-orchestrator.mjs --target "$PWD"
+npx --yes --prefer-online @hartou/agent-pipeline init --target . --skill
 ```
+
+Use `--force` only when intentionally upgrading/replacing the vendored runner,
+skill, generated pipeline config, and generated agent mode. Back up
+`tools/agent-runner/pipeline.config.json` first because target repos often have
+custom QA commands, stack facts, pricing, and container settings.
 
 Then manually merge repo-specific rules into:
 
@@ -106,19 +141,24 @@ replace existing runner/config/agent files.
 
 - The unscoped npm name `agent-pipeline` is already taken (`npm view
   agent-pipeline version` returned `0.1.4`).
-- Scoped names checked with no result at last run:
-  - `@hartou/agent-pipeline`
-  - `@hartou/create-agent-pipeline`
+- `@hartou/agent-pipeline` is published publicly on npm. The unscoped
+  `agent-pipeline` name is still not used because it was already taken.
 - `package.json` now uses the scoped name `@hartou/agent-pipeline`, MIT license
   metadata, public publish config, and no `private` flag.
-- The package binary points to `./run.mjs`. In npm-package context, `init` now
+- The package binary points to `run.mjs`. In npm-package context, `init` now
   delegates to the installer script with `--source <package-root>` so public npm
   UX can bootstrap a normal target repo.
+- Package `0.2.1` added explicit `--skill` / `--skip-skill` flags.
+- Package `0.2.2` documented Docker prerequisites, provider key links,
+  telemetry usage, and downstream contribution-back flow.
+- Package `0.2.3` added `img/agent-pipeline-architecture.png` to the README and
+  npm package.
+- Package `0.2.4` fixed the DeepSeek model env var casing to `DEEPSEEK_MODEL`.
 
 Recommended public command:
 
 ```sh
-npx @hartou/agent-pipeline init --target .
+npx --yes --prefer-online @hartou/agent-pipeline init --target . --skill
 ```
 
 That should install the runner, skill, agent mode, starter context, env example,
@@ -144,65 +184,37 @@ Suggested aliases for public UX:
 - For next week's public release, prefer npm public scoped package
   `@hartou/agent-pipeline` unless there is a business reason to gate access.
 
-## Public Release Tasks
+## Completed Public Release Work
 
-1. Make the GitHub repo public after final secret/license review.
-2. Add a license file if this will be public.
-3. Update `package.json` for npm:
-   - rename to `@hartou/agent-pipeline` unless another scope/name is chosen.
-   - remove `"private": true`.
-   - add `repository`, `homepage`, `bugs`, `keywords`, `license`, and
-     `publishConfig.access` if publishing scoped public.
-4. Add an npm bootstrap mode to the CLI, so `npx @hartou/agent-pipeline init`
-  works from a package cache and installs into the target repo. Done locally;
-  validate from a packed tarball before publishing.
-5. Add an optional `.github/copilot-instructions.md` template that points to
-  `AGENTS.md`, `agent-context/current-state.md`, `agent-context/next-tasks.md`,
-  `agent-context/architecture-decisions.md`, `agent-context/review-checklist.md`,
-  and `agent-context/handoff.md`. Done locally; installer skips existing files.
-6. Ensure npm package includes every file needed by the bootstrapper:
-   - `run.mjs`
-   - `package.json`
-   - `pipeline.config.schema.json`
-   - `templates/`
-   - `Dockerfile`
-   - `README.md`
-   - `GUIDE.md`
-   - `.github/skills/`
-7. Rewrite README primary install path around npm/npx, leaving clone/copy as a
-   fallback/dev path.
-8. Test in a fresh repo outside this checkout:
+- GitHub repo is public.
+- MIT license file is present.
+- npm package is public at `@hartou/agent-pipeline`.
+- npm bootstrap mode works from the public package.
+- `.github/copilot-instructions.md` is scaffolded when missing.
+- npm package includes every file needed by the bootstrapper, including `img/`.
+- README primary install path is npm/npx; clone/copy remains a fallback/dev path.
+- Multiple fresh external repo tests passed with `DOCTOR: all green`.
+- Latest tested public package: `0.2.4`.
+
+Next useful release work:
+
+1. Add a first-class `upgrade` command that updates the vendored runner/skill
+  while preserving or merging target-repo `pipeline.config.json`.
+2. Add `check` as an alias for `doctor` if desired.
+3. Add a small public demo repo/run showing plan JSON, worker output, QA output,
+  and telemetry summary from a real task.
+4. Consider reducing or optimizing the README image asset if npm package size
+  matters; `0.2.3+` packages are about 1.2 MB because of the PNG.
+
+## Known Good Public Install Command
+
+From published npm `0.2.4`, the public install path worked:
 
 ```sh
-mkdir -p ~/dev/agent-pipeline-npx-test
-cd ~/dev/agent-pipeline-npx-test
+mkdir -p /path/to/target-repo && cd /path/to/target-repo
 git init
-npx /path/to/local/packed/tarball init --target .
-SAKANA_FUGU_API_KEY=dummy DEEPSEEK_API_KEY=dummy OPENAI_API_KEY=dummy node tools/agent-runner/run.mjs doctor
-```
-
-9. Pack and inspect contents:
-
-```sh
-npm pack --dry-run
-```
-
-10. Publish only after package install has been tested from a tarball.
-
-## Known Good Manual Install Command
-
-From merged `main`, the README skill-installed path worked:
-
-```sh
-mkdir -p /path/to/target-repo
-cd /path/to/target-repo
-git init
-gh repo clone hartou/agent-pipeline /tmp/agent-pipeline -- --depth 1 --branch main
-mkdir -p /path/to/target-repo/.github/skills
-cp -R /tmp/agent-pipeline/.github/skills/agent-orchestrator-installer /path/to/target-repo/.github/skills/
-cd /path/to/target-repo
-node .github/skills/agent-orchestrator-installer/scripts/install-agent-orchestrator.mjs --target /path/to/target-repo
-SAKANA_FUGU_API_KEY=dummy DEEPSEEK_API_KEY=dummy OPENAI_API_KEY=dummy node tools/agent-runner/run.mjs doctor
+npx --yes --prefer-online @hartou/agent-pipeline init --target . --skill
+SAKANA_FUGU_API_KEY=dummy DEEPSEEK_API_KEY=dummy DEEPSEEK_MODEL=deepseek-v4-pro OPENAI_API_KEY=dummy node tools/agent-runner/run.mjs doctor
 ```
 
 Expected validation output ends with:
