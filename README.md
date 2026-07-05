@@ -119,11 +119,25 @@ The bootstrap installs:
 - starter `agent-context/`, `agent-tasks/`, and `agent-output/` folders.
 - `.env.agent-pipeline.example` with env var names only.
 
-Existing files are skipped unless you pass `--force`, so brownfield installs stay
-conservative by default. The installer still adds the separate
+Existing files are skipped by default, so brownfield installs stay conservative.
+The installer still adds the separate
 `.github/instructions/agent-pipeline.instructions.md` companion file so Copilot can
 discover the pipeline workflow even when `.github/copilot-instructions.md` or
 `AGENTS.md` already belongs to the repo.
+
+To apply a newer agent-pipeline version to an already-installed brownfield repo,
+use `--upgrade` instead of deleting and reinstalling:
+
+```sh
+npx @hartou/agent-pipeline init --target . --upgrade --skill
+```
+
+`--upgrade` refreshes pipeline-owned assets: `tools/agent-runner/`, the installer
+skill, `.github/agents/orchestrator.agent.md`, and
+`.github/instructions/agent-pipeline.instructions.md`. It preserves the target
+repo's customized `tools/agent-runner/pipeline.config.json`, `AGENTS.md`, and
+`.github/copilot-instructions.md`. Use `--force` only when you intentionally want
+to replace generated init templates, including config.
 
 After install, edit `tools/agent-runner/pipeline.config.json` for the target repo,
 add real API keys to `.env` or your shell, and run:
@@ -142,7 +156,8 @@ engine is the same bytes in every repo; the config is the only variable.
    by content, offline, no install step).
 2. `node tools/agent-runner/run.mjs init` — writes `pipeline.config.json`, the
   orchestrator agent mode, and the pipeline companion instruction from
-  `templates/`. Never overwrites without `--force`.
+  `templates/`. Never overwrites without `--force`; use installer `--upgrade` to
+  refresh pipeline-owned files while preserving config.
 3. Edit `pipeline.config.json`: set `project`, `paths`, `stackFacts`, and the `qa`
    commands for this repo. Add the referenced keys to `.env`.
 4. `node tools/agent-runner/run.mjs doctor` until green, then `run`.

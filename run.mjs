@@ -13,7 +13,7 @@
 // env-var NAME only and read from .env at call time; never stored or printed.
 //
 // Verbs:
-//   init [--force]                              scaffold config + agent mode
+//   init [--force|--upgrade]                    scaffold config + agent mode
 //   doctor                                      preflight: node, config, keys, QA
 //   plan   --task <f> [--feedback <f>]          orchestrate -> JSON plan
 //   build  --plan <p> --subtask <id> [--provider p] [--context f...]
@@ -191,7 +191,7 @@ async function readContextFiles(files) {
   return parts.join('\n\n---\n\n');
 }
 
-const BOOL_FLAGS = new Set(['force', 'skill', 'skip-skill', 'skip-init', 'skip-agents-md']);
+const BOOL_FLAGS = new Set(['force', 'upgrade', 'skill', 'skip-skill', 'skip-init', 'skip-agents-md']);
 function parseArgs(argv) {
   const args = { _: [], context: [] };
   for (let i = 0; i < argv.length; i += 1) {
@@ -547,6 +547,7 @@ function runBootstrapInit(args) {
   const target = resolve(args.target || process.cwd());
   const installerArgs = [installerPath, '--target', target, '--source', ENGINE_DIR];
   if (args.force) installerArgs.push('--force');
+  if (args.upgrade) installerArgs.push('--upgrade');
   if (args.skill) installerArgs.push('--skill');
   if (args['skip-skill']) installerArgs.push('--skip-skill');
   if (args['skip-init']) installerArgs.push('--skip-init');

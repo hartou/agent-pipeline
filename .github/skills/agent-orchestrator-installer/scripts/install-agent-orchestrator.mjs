@@ -12,13 +12,14 @@ function usage() {
   return `Install Agent Orchestrator mode into a target repository.
 
 Usage:
-  node install-agent-orchestrator.mjs [--target <path>] [--source <path>] [--repo <owner/name>] [--ref <ref>] [--force] [--skill] [--skip-skill] [--skip-init] [--skip-agents-md]
+  node install-agent-orchestrator.mjs [--target <path>] [--source <path>] [--repo <owner/name>] [--ref <ref>] [--upgrade] [--force] [--skill] [--skip-skill] [--skip-init] [--skip-agents-md]
 
 Options:
   --target <path>       Target repository root. Defaults to current directory.
   --source <path>       Local agent-pipeline checkout/package to copy from.
   --repo <owner/name>   GitHub repo to fetch when --source is omitted. Default: ${DEFAULT_REPO}.
   --ref <ref>           Branch or tag to fetch when --source is omitted. Default: ${DEFAULT_REF}.
+  --upgrade             Refresh pipeline-owned runner, skill, and agent templates while preserving pipeline.config.json and repo-owned guidance.
   --force               Replace existing tools/agent-runner and force init templates.
   --skill               Install the Copilot skill. This is the default; the flag is accepted for explicit npm usage.
   --skip-skill          Do not install .github/skills/agent-orchestrator-installer.
@@ -34,6 +35,7 @@ function parseArgs(argv) {
     source: '',
     repo: DEFAULT_REPO,
     ref: DEFAULT_REF,
+    upgrade: false,
     force: false,
     installSkill: true,
     skipInit: false,
@@ -52,6 +54,8 @@ function parseArgs(argv) {
       args.repo = argv[++index];
     } else if (arg === '--ref') {
       args.ref = argv[++index];
+    } else if (arg === '--upgrade') {
+      args.upgrade = true;
     } else if (arg === '--force') {
       args.force = true;
     } else if (arg === '--skill') {
@@ -92,12 +96,16 @@ async function checkoutSource({ repo, ref }) {
   return target;
 }
 
-async function copyRunner({ sourceRoot, targetRoot, force }) {
+async function copyRunner({ sourceRoot, targetRoot, force, preserveConfig }) {
   const targetRunner = join(targetRoot, 'tools', 'agent-runner');
+  const targetConfig = join(targetRunner, 'pipeline.config.json');
+  const savedConfig = preserveConfig && existsSync(targetConfig)
+    ? await readFile(targetConfig, 'utf8')
+    : null;
   if (existsSync(targetRunner)) {
     if (!force) {
       console.error(`[installer] exists, skipped: ${targetRunner}`);
-      console.error('[installer] pass --force to replace the existing runner.');
+      console.error('[installer] pass --upgrade to refresh the runner while preserving config, or --force to replace it.');
       return false;
     }
     await rm(targetRunner, { recursive: true, force: true });
@@ -120,6 +128,11 @@ async function copyRunner({ sourceRoot, targetRoot, force }) {
     await cp(src, join(targetRunner, entry), { recursive: true });
   }
 
+  if (savedConfig !== null) {
+    await writeFile(targetConfig, savedConfig, 'utf8');
+    console.error(`[installer] preserved ${targetConfig}`);
+  }
+
   console.error(`[installer] wrote ${targetRunner}`);
   return true;
 }
@@ -131,7 +144,7 @@ async function copySkill({ sourceRoot, targetRoot, force }) {
   if (existsSync(targetSkill)) {
     if (!force) {
       console.error(`[installer] exists, skipped: ${targetSkill}`);
-      console.error('[installer] pass --force to replace the existing installer skill.');
+      console.error('[installer] pass --upgrade or --force to replace the existing installer skill.');
       return false;
     }
     await rm(targetSkill, { recursive: true, force: true });
@@ -152,6 +165,30 @@ async function writeIfMissing(filePath, content) {
   await writeFile(filePath, content, 'utf8');
   console.error(`[installer] wrote ${filePath}`);
   return true;
+}
+
+async function copyFileFromSource({ sourceRoot, targetRoot, sourceRel, targetRel }) {
+  const src = join(sourceRoot, sourceRel);
+  const dest = join(targetRoot, targetRel);
+  if (!existsSync(src)) throw new Error(`Source is missing required file: ${src}`);
+  await mkdir(dirname(dest), { recursive: true });
+  await cp(src, dest);
+  console.error(`[installer] refreshed ${dest}`);
+}
+
+async function refreshPipelineOwnedTemplates({ sourceRoot, targetRoot }) {
+  await copyFileFromSource({
+    sourceRoot,
+    targetRoot,
+    sourceRel: join('templates', 'orchestrator.agent.md'),
+    targetRel: join('.github', 'agents', 'orchestrator.agent.md'),
+  });
+  await copyFileFromSource({
+    sourceRoot,
+    targetRoot,
+    sourceRel: join('templates', 'agent-pipeline.instructions.md'),
+    targetRel: join('.github', 'instructions', 'agent-pipeline.instructions.md'),
+  });
 }
 
 async function scaffoldRepoFiles({ targetRoot, skipAgentsMd }) {
@@ -229,12 +266,14 @@ async function main() {
   }
 
   try {
-    await copyRunner({ sourceRoot, targetRoot, force: args.force });
-    if (args.installSkill) await copySkill({ sourceRoot, targetRoot, force: args.force });
+    const replaceExisting = args.force || args.upgrade;
+    await copyRunner({ sourceRoot, targetRoot, force: replaceExisting, preserveConfig: args.upgrade && !args.force });
+    if (args.installSkill) await copySkill({ sourceRoot, targetRoot, force: replaceExisting });
     await scaffoldRepoFiles({ targetRoot, skipAgentsMd: args.skipAgentsMd });
+    if (args.upgrade && !args.skipInit) await refreshPipelineOwnedTemplates({ sourceRoot, targetRoot });
     if (!args.skipInit) await runInit({ targetRoot, force: args.force });
 
-    process.stdout.write(`\nAgent Orchestrator mode installed in ${targetRoot}.\n\nNext steps:\n`);
+    process.stdout.write(`\nAgent Orchestrator mode ${args.upgrade ? 'upgraded' : 'installed'} in ${targetRoot}.\n\nNext steps:\n`);
     process.stdout.write('1. Edit tools/agent-runner/pipeline.config.json for this repo.\n');
     process.stdout.write('2. Add real API keys to .env or your shell; use .env.agent-pipeline.example for names only.\n');
     process.stdout.write('3. Run: node tools/agent-runner/run.mjs doctor\n');
