@@ -79,6 +79,14 @@ example with key names only.
 
 There are two normal ways to use it.
 
+First, make sure the target repo already exists. For a brand-new empty repo:
+
+```sh
+mkdir -p /path/to/target-repo
+cd /path/to/target-repo
+git init
+```
+
 ### Fastest path from this repo
 
 Clone this repo somewhere temporary, then run the installer directly against your
