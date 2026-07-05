@@ -77,17 +77,40 @@ script vendors `tools/agent-runner/`, runs `init`, creates starter
 `agent-context/`, `agent-tasks/`, and `agent-output/` folders, and writes an env
 example with key names only.
 
-From a checkout of this repo:
+There are two normal ways to use it.
+
+### Fastest path from this repo
+
+Clone this repo somewhere temporary, then run the installer directly against your
+target repo. This does **not** require installing the skill into the target first:
+
 
 ```sh
+gh repo clone hartou/agent-pipeline /tmp/agent-pipeline
+cd /tmp/agent-pipeline
 node .github/skills/agent-orchestrator-installer/scripts/install-agent-orchestrator.mjs --target /path/to/target-repo --source "$PWD"
 ```
 
-From a repo where only the skill is installed, omit `--source`; the script fetches
-`hartou/agent-pipeline` through GitHub CLI auth:
+### Skill-installed path
+
+If you want the target repo to carry the reusable skill, copy only the skill first,
+then run it from inside the target repo. In this mode you omit `--source`; the
+script fetches `hartou/agent-pipeline` itself, then installs the runner and runs
+`init`.
 
 ```sh
+gh repo clone hartou/agent-pipeline /tmp/agent-pipeline
+mkdir -p /path/to/target-repo/.github/skills
+cp -R /tmp/agent-pipeline/.github/skills/agent-orchestrator-installer /path/to/target-repo/.github/skills/
+cd /path/to/target-repo
 node .github/skills/agent-orchestrator-installer/scripts/install-agent-orchestrator.mjs --target /path/to/target-repo
+```
+
+After either path, edit `tools/agent-runner/pipeline.config.json` for the target
+repo, add real API keys to `.env` or your shell, and run:
+
+```sh
+node tools/agent-runner/run.mjs doctor
 ```
 
 ## Secrets
