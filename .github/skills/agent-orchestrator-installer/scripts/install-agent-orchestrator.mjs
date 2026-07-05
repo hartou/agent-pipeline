@@ -151,7 +151,7 @@ async function scaffoldRepoFiles({ targetRoot, skipAgentsMd }) {
   );
   await writeIfMissing(
     join(targetRoot, 'agent-context', 'handoff.md'),
-    '# Handoff\n\nCopilot acts as Client/QA, Fugu plans, workers implement, and `tools/agent-runner/run.mjs` is wiring only.\n',
+    '# Conversation Handoff\n\nUse this file to resume the next Copilot or Orchestrator session without replaying the whole chat. Update it after each accepted pipeline run or before ending a long conversation.\n\n## Role Split\n\nCopilot acts as Client/QA, Fugu plans, workers implement, and `tools/agent-runner/run.mjs` is wiring only.\n\n## Latest User Request\n\n- Pending: replace this with the most recent accepted request or goal.\n\n## Current State\n\n- Branch/status:\n- Important decisions:\n- Files changed or generated:\n- Validation run:\n\n## Next Conversation Prompt\n\nStart the next session with this concise instruction:\n\n```text\nContinue from `agent-context/handoff.md`. Confirm current git status, read `AGENTS.md` plus the relevant `agent-context/` files, then proceed with the next task.\n```\n',
   );
   await writeIfMissing(
     join(targetRoot, 'agent-context', 'model-worker-performance.csv'),

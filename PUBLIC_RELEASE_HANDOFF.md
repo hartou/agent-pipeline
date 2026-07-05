@@ -59,7 +59,9 @@ Yes, installation adds Copilot-facing context and instructions:
 - `AGENTS.md` gives repo-wide operating rules and role boundaries.
 - `agent-context/current-state.md`, `next-tasks.md`,
   `architecture-decisions.md`, `review-checklist.md`, and `handoff.md` provide
-  compact persistent context for future runs.
+  compact persistent context for future runs. `handoff.md` is the conversation
+  handoff: update it before ending long Copilot sessions or after accepted
+  pipeline runs so the next session can resume without replaying the chat.
 - The installer skill itself remains available in `.github/skills/` when using
   the skill-installed path.
 

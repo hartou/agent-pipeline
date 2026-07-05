@@ -75,7 +75,9 @@ This repo also ships a reusable Copilot skill at
 repo when you want the agent to bootstrap Orchestrator mode for you. The bundled
 script vendors `tools/agent-runner/`, runs `init`, creates starter
 `agent-context/`, `agent-tasks/`, and `agent-output/` folders, and writes an env
-example with key names only.
+example with key names only. The starter context includes
+`agent-context/handoff.md`, a compact conversation handoff note to update before
+ending long sessions or after accepted pipeline runs.
 
 There are two normal ways to use it.
 

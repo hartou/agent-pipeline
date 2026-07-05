@@ -14,6 +14,7 @@ Use this skill when a user wants to install the Agent Orchestrator mode into a r
 - `.github/agents/orchestrator.agent.md` via `run.mjs init`.
 - `tools/agent-runner/pipeline.config.json` via `run.mjs init`.
 - Starter `agent-context/`, `agent-tasks/`, and `agent-output/` folders.
+- `agent-context/handoff.md` for concise conversation resume notes across Copilot sessions.
 - Starter `AGENTS.md` only if the target repo does not already have one.
 - `.env.agent-pipeline.example` with required env var names only.
 
