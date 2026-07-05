@@ -13,6 +13,8 @@ Use this skill when a user wants to install the Agent Orchestrator mode into a r
 - `tools/agent-runner/` with the repo-agnostic `run.mjs` wiring.
 - `.github/skills/agent-orchestrator-installer/` for future Copilot-assisted installs.
 - `.github/agents/orchestrator.agent.md` via `run.mjs init`.
+- `.github/instructions/agent-pipeline.instructions.md` via `run.mjs init`, as a
+   companion instruction file that does not overwrite repo-owned guidance.
 - `.github/copilot-instructions.md` if the target repo does not already have one.
 - `tools/agent-runner/pipeline.config.json` via `run.mjs init`.
 - Starter `agent-context/`, `agent-tasks/`, and `agent-output/` folders.
@@ -83,6 +85,9 @@ node tools/agent-runner/run.mjs run --task agent-tasks/smoke-test.md
 - Do not print `.env` contents or secrets.
 - Do not overwrite an existing runner/config/agent unless the user explicitly chooses `--force`.
 - Treat `AGENTS.md` as repo-owned. If it exists, leave it alone and ask whether to add orchestrator guidance.
+- Treat `.github/copilot-instructions.md` as repo-owned. The installer adds
+   `.github/instructions/agent-pipeline.instructions.md` for pipeline guidance
+   instead of mutating existing main instructions.
 - Keep the role split intact: Copilot/Client manages intake and QA, Fugu plans, workers write product code, `run.mjs` is wiring only.
 - Do not hand-edit product code while acting in Orchestrator mode unless the user explicitly asks to leave the pipeline model.
 

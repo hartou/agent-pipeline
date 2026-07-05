@@ -457,6 +457,7 @@ async function doInit({ force }) {
   const targets = [
     { src: join(ENGINE_DIR, 'templates', 'pipeline.config.json'), dest: CONFIG_PATH, label: 'tools/agent-runner/pipeline.config.json' },
     { src: join(ENGINE_DIR, 'templates', 'orchestrator.agent.md'), dest: join(ROOT, '.github', 'agents', 'orchestrator.agent.md'), label: '.github/agents/orchestrator.agent.md' },
+    { src: join(ENGINE_DIR, 'templates', 'agent-pipeline.instructions.md'), dest: join(ROOT, '.github', 'instructions', 'agent-pipeline.instructions.md'), label: '.github/instructions/agent-pipeline.instructions.md' },
   ];
   for (const t of targets) {
     if (existsSync(t.dest) && !force) {

@@ -86,13 +86,18 @@ The bootstrap installs:
 - `tools/agent-runner/` with the pinned runner and templates.
 - `.github/skills/agent-orchestrator-installer/` for future Copilot-assisted installs.
 - `.github/agents/orchestrator.agent.md`.
+- `.github/instructions/agent-pipeline.instructions.md` with pipeline-specific
+  Copilot guidance that does not overwrite existing repo instructions.
 - `.github/copilot-instructions.md` if the repo does not already have one.
 - `AGENTS.md` if the repo does not already have one.
 - starter `agent-context/`, `agent-tasks/`, and `agent-output/` folders.
 - `.env.agent-pipeline.example` with env var names only.
 
 Existing files are skipped unless you pass `--force`, so brownfield installs stay
-conservative by default.
+conservative by default. The installer still adds the separate
+`.github/instructions/agent-pipeline.instructions.md` companion file so Copilot can
+discover the pipeline workflow even when `.github/copilot-instructions.md` or
+`AGENTS.md` already belongs to the repo.
 
 After install, edit `tools/agent-runner/pipeline.config.json` for the target repo,
 add real API keys to `.env` or your shell, and run:
@@ -109,8 +114,9 @@ engine is the same bytes in every repo; the config is the only variable.
 
 1. Copy the `tools/agent-runner/` folder into the target repo (vendored — pinned
    by content, offline, no install step).
-2. `node tools/agent-runner/run.mjs init` — writes `pipeline.config.json` and the
-   orchestrator agent mode from `templates/`. Never overwrites without `--force`.
+2. `node tools/agent-runner/run.mjs init` — writes `pipeline.config.json`, the
+  orchestrator agent mode, and the pipeline companion instruction from
+  `templates/`. Never overwrites without `--force`.
 3. Edit `pipeline.config.json`: set `project`, `paths`, `stackFacts`, and the `qa`
    commands for this repo. Add the referenced keys to `.env`.
 4. `node tools/agent-runner/run.mjs doctor` until green, then `run`.
