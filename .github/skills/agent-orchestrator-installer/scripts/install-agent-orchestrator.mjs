@@ -185,7 +185,7 @@ async function scaffoldRepoFiles({ targetRoot, skipAgentsMd }) {
   );
   await writeIfMissing(
     join(targetRoot, '.env.agent-pipeline.example'),
-    'SAKANA_FUGU_API_KEY=\nDEEPSEEK_API_KEY=\nOPENAI_API_KEY=\nFUGU_MODEL=fugu\nDeepSeek_Model=deepseek-v4-pro\nOPENAI_MODEL=gpt-4o-mini\n',
+    'SAKANA_FUGU_API_KEY=\nDEEPSEEK_API_KEY=\nOPENAI_API_KEY=\nFUGU_MODEL=fugu\nDEEPSEEK_MODEL=deepseek-v4-pro\nOPENAI_MODEL=gpt-4o-mini\n',
   );
   await writeIfMissing(
     join(targetRoot, '.github', 'copilot-instructions.md'),

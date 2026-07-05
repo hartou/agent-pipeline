@@ -32,7 +32,7 @@
         "provider": "deepseek",
         "baseUrl": "https://api.deepseek.com/v1",
         "model": "deepseek-v4-pro",
-        "modelEnv": "DeepSeek_Model",
+        "modelEnv": "DEEPSEEK_MODEL",
         "apiKeyEnv": "DEEPSEEK_API_KEY",
         "maxTokens": 12000,
         "params": {},
