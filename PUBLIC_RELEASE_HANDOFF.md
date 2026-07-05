@@ -12,9 +12,9 @@ the Northfield app repo.
 - Default branch: `main`.
 - Current visibility: public.
 - npm package: `@hartou/agent-pipeline`.
-- Latest published npm version: `0.2.4`.
-- Next package version prepared locally: `0.2.5`.
-- Latest release commit on `main`: `1aeed3a Fix DeepSeek model env casing`.
+- Latest published npm version: `0.2.7`.
+- Latest release tag: `v0.2.7`.
+- Latest release commit on `main`: `53eff23 Merge branch 'update-runtime-architecture-diagram'`.
 - Public install command:
 
 ```sh
@@ -171,6 +171,14 @@ replace existing runner/config/agent files.
   `.github/instructions/agent-pipeline.instructions.md` install path so brownfield
   repos keep existing instructions untouched while still receiving pipeline
   guidance.
+- Package `0.2.6` added containerized Fugu orchestration, explicit
+  `container.orchestrator` / `container.workers` toggles, Fugu-owned worker PR
+  validation guidance, branch/worktree isolation guidance, and safe brownfield
+  `--upgrade` mode.
+- Package `0.2.7` updated the README architecture diagram to show runtime
+  coordination only: Copilot client, Fugu coordinator container, worker
+  containers/worktrees, Fugu validation, real QA, and client approval. Merge,
+  deployment, and npm release governance are intentionally separate.
 
 Recommended public command:
 
@@ -211,21 +219,23 @@ Suggested aliases for public UX:
 - npm package includes every file needed by the bootstrapper, including `img/`.
 - README primary install path is npm/npx; clone/copy remains a fallback/dev path.
 - Multiple fresh external repo tests passed with `DOCTOR: all green`.
-- Latest tested public package: `0.2.4`.
+- Latest tested public package: `0.2.7`.
+- Brownfield upgrades are now supported with
+  `npx --yes --prefer-online @hartou/agent-pipeline init --target . --upgrade --skill`.
+- The README diagram is updated at `img/agent-pipeline-architecture.png`; use it
+  in launch/social posts as the visual companion to the npm announcement.
 
 Next useful release work:
 
-1. Add a first-class `upgrade` command that updates the vendored runner/skill
-  while preserving or merging target-repo `pipeline.config.json`.
-2. Add `check` as an alias for `doctor` if desired.
-3. Add a small public demo repo/run showing plan JSON, worker output, QA output,
+1. Add `check` as an alias for `doctor` if desired.
+2. Add a small public demo repo/run showing plan JSON, worker output, QA output,
   and telemetry summary from a real task.
-4. Consider reducing or optimizing the README image asset if npm package size
-  matters; `0.2.3+` packages are about 1.2 MB because of the PNG.
+3. Consider reducing or optimizing the README image asset if npm package size
+  matters; `0.2.7` is about 1.4 MB because of the PNG.
 
 ## Known Good Public Install Command
 
-From published npm `0.2.4`, the public install path worked:
+From published npm `0.2.7`, the public install path worked:
 
 ```sh
 mkdir -p /path/to/target-repo && cd /path/to/target-repo
