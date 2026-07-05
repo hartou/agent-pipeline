@@ -7,12 +7,12 @@ Roles mirror a real software team:
 
 - **Client** (you / Copilot) — intake, QA, approval. Talks only to the orchestrator.
 - **Orchestrator** (Fugu) — decomposes a request into bounded subtasks.
-- **Workers** (deepseek-4-pro, gpt-4o-mini) — write product code **directly into
-  the real repo**. No sandbox, no staging folder, no "build then move".
+- **Workers** (deepseek-4-pro, gpt-4o-mini) — write product code in isolated
+  task branches/worktrees, then submit PR-like changes back to Fugu.
 
-The client tests the **real output** (typecheck / Playwright / curl against the
-live stack). On failure, feedback goes back to the orchestrator, which re-plans;
-workers fix in place; re-test — until the client approves.
+Fugu validates worker PRs and sends rejected work back to the workers. Once Fugu
+is satisfied, the accepted candidate returns to the client for final approval.
+Only client-approved work is integrated.
 
 > New here? Read [GUIDE.md](./GUIDE.md) for the full concept + a FAQ.
 
@@ -45,9 +45,10 @@ node tools/agent-runner/run.mjs report [--run <run_id>]          # aggregate tel
 
 Fugu owns coordination: its plan declares `dependsOn` per sub-task, and the wiring
 runs everything with no unmet dependency **in parallel**, up to `loop.concurrency`.
-With `container.enabled` in the config, each build sub-task runs in its **own
-ephemeral Docker container** (repo bind-mounted, keys from the mounted `.env`).
-Two sub-tasks that touch the same file are never run at the same time.
+With `container.enabled` in the config, Fugu orchestration runs in the runner
+container and each build sub-task runs in its **own ephemeral Docker container**
+(repo bind-mounted, keys from the mounted `.env`). Two sub-tasks that touch the
+same file are never run at the same time.
 
 Docker is required for this default containerized mode. Install Docker Desktop on
 macOS/Windows or Docker Engine on Linux, and confirm `docker version` works before
@@ -57,8 +58,33 @@ running containerized workers.
 docker compose --profile agents build agent-worker   # build the worker image (or the wiring builds it on demand)
 ```
 
-Set `container.enabled: false` to fall back to in-process execution (still parallel,
-governed by `loop.concurrency`).
+Set `container.enabled: false` to fall back to in-process execution (still
+parallel, governed by `loop.concurrency`). Set `container.orchestrator: false` or
+`container.workers: false` to opt only one side out of containers.
+
+## Branch/worktree acceptance flow
+
+The intended product workflow is branch-based, not shared-checkout editing:
+
+1. Fugu plans the work and assigns bounded subtasks.
+2. Each worker builds in its own task branch/worktree and produces a PR-like unit.
+3. Fugu validates worker PRs against the plan and acceptance criteria.
+4. Rejected PRs go back to the worker with Fugu's feedback.
+5. Fugu returns only satisfied candidates to the client.
+6. The client approves or rejects the candidate.
+7. Approved work is merged into the active integration branch.
+
+The file-overlap lock remains a wiring safety net, but it is no longer the primary
+coordination model. Conflicts should appear at the PR/merge boundary where Fugu
+can reject or re-plan them.
+
+## NPM release branch
+
+Implementation acceptance and NPM publishing are separate gates. Accepted work can
+accumulate on the integration branch without being published immediately. Prepare
+package releases from an explicit `release/npm` branch, run packaging checks there
+(`npm pack`, install smoke test, metadata/version review), get client approval,
+then publish and tag the release.
 
 ## Install into a repo
 

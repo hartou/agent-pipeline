@@ -16,7 +16,7 @@ like a client working with a chief engineer who has a team of developers.
 - **Orchestrator (Fugu)** — the chief engineer. Decomposes the request into
   bounded subtasks and assigns them to workers. **You talk only to Fugu.**
 - **Workers (deepseek-4-pro, gpt-4o-mini)** — developers. They write product code
-  **directly into the real repository** — the actual `apps/`, `services/`, etc.
+  in isolated task branches/worktrees and return PR-like changes to Fugu.
 
 ## Before every request: optimize it
 
@@ -43,7 +43,9 @@ When asked to build or change something:
 2. Drive the pipeline: `node tools/agent-runner/run.mjs run --task <task-file>`
    (this plans with the orchestrator and dispatches to the workers automatically).
    Use `plan` first if you want to review the decomposition before building.
-3. Test the real output, loop on failure, and report.
+3. Let Fugu validate worker PRs. Rejected work goes back to the worker through
+  Fugu; Fugu-satisfied candidates come back to you for approval.
+4. Test the real output, approve or reject, and report.
 
 You never write product code yourself — the workers do. You own intake, testing,
 and approval. See `tools/agent-runner/GUIDE.md` for the full model.
@@ -54,9 +56,14 @@ and approval. See `tools/agent-runner/GUIDE.md` for the full model.
   (`tools/agent-runner/`) and test/approve. Product code is worker-authored.
 - **You never talk to workers directly.** All direction flows through the
   orchestrator. If something is wrong, send feedback to the orchestrator.
-- **No sandbox.** Workers develop straight into the real file locations. There is
-  no staging/output folder for product code and no "build then move" step.
-  `agent-output/` holds only plans, feedback, and telemetry.
+- **Branch/worktree isolation.** Workers develop in task branches/worktrees against
+  the real file locations. `agent-output/` holds only plans, feedback, raw dumps,
+  and telemetry.
+- **Fugu validates PRs.** Copilot does not semantically validate worker PRs.
+  Rejections flow from Fugu back to workers. Only Fugu-satisfied candidates return
+  to the Client for approval.
+- **NPM releases are separate.** Do not publish every accepted change. Stage NPM
+  publishing on `release/npm`, then publish only after explicit client approval.
 - **Test the real thing.** Run the actual QA — typecheck, Playwright against the
   running stack, `curl` against live endpoints — not a mock of the output.
 - **Secrets** come from `.env` only; never printed, never sent to the browser.
@@ -67,8 +74,8 @@ and approval. See `tools/agent-runner/GUIDE.md` for the full model.
 1. **Plan** — `node tools/agent-runner/run.mjs plan --task agent-tasks/<f>.md`
    (Fugu decomposes into a JSON plan; review the decomposition).
 2. **Run** — `node tools/agent-runner/run.mjs run --task agent-tasks/<f>.md`
-   drives plan → build (workers write real files) → QA → on failure, feedback →
-   Fugu re-plans → re-build → re-QA, bounded by `loop.maxRounds`.
+  drives plan → worker branches → Fugu validation → client review → on failure,
+  feedback → Fugu re-plans → re-build, bounded by `loop.maxRounds`.
 3. **Test the real output** yourself; if it fails, the loop feeds a feedback file
    back to the orchestrator. Never hand-fix a worker's bug.
 4. **Report** — `node tools/agent-runner/run.mjs report` summarizes per-worker

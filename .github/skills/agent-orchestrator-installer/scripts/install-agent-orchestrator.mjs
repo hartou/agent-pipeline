@@ -177,7 +177,7 @@ async function scaffoldRepoFiles({ targetRoot, skipAgentsMd }) {
   );
   await writeIfMissing(
     join(targetRoot, 'agent-context', 'handoff.md'),
-    '# Conversation Handoff\n\nUse this file to resume the next Copilot or Orchestrator session without replaying the whole chat. Update it after each accepted pipeline run or before ending a long conversation.\n\n## Role Split\n\nCopilot acts as Client/QA, Fugu plans, workers implement, and `tools/agent-runner/run.mjs` is wiring only.\n\n## Latest User Request\n\n- Pending: replace this with the most recent accepted request or goal.\n\n## Current State\n\n- Branch/status:\n- Important decisions:\n- Files changed or generated:\n- Validation run:\n\n## Next Conversation Prompt\n\nStart the next session with this concise instruction:\n\n```text\nContinue from `agent-context/handoff.md`. Confirm current git status, read `AGENTS.md` plus the relevant `agent-context/` files, then proceed with the next task.\n```\n',
+    '# Conversation Handoff\n\nUse this file to resume the next Copilot or Orchestrator session without replaying the whole chat. Update it after each accepted pipeline run or before ending a long conversation.\n\n## Role Split\n\nCopilot acts as Client/QA and final approver, Fugu plans and validates worker PR-like changes, workers implement in isolated task branches/worktrees, and `tools/agent-runner/run.mjs` is wiring only. NPM publishing is staged separately on `release/npm`.\n\n## Latest User Request\n\n- Pending: replace this with the most recent accepted request or goal.\n\n## Current State\n\n- Branch/status:\n- Important decisions:\n- Files changed or generated:\n- Validation run:\n\n## Next Conversation Prompt\n\nStart the next session with this concise instruction:\n\n```text\nContinue from `agent-context/handoff.md`. Confirm current git status, read `AGENTS.md` plus the relevant `agent-context/` files, then proceed with the next task.\n```\n',
   );
   await writeIfMissing(
     join(targetRoot, 'agent-context', 'model-worker-performance.csv'),
@@ -189,13 +189,13 @@ async function scaffoldRepoFiles({ targetRoot, skipAgentsMd }) {
   );
   await writeIfMissing(
     join(targetRoot, '.github', 'copilot-instructions.md'),
-    '# Copilot Instructions\n\nBefore making agent-pipeline changes in this repo, read:\n\n- `.github/instructions/agent-pipeline.instructions.md`\n- `AGENTS.md`\n- `agent-context/current-state.md`\n- `agent-context/next-tasks.md`\n- `agent-context/architecture-decisions.md`\n- `agent-context/review-checklist.md`\n- `agent-context/handoff.md`\n\nUse Orchestrator mode for implementation work: Copilot handles intake and QA, Fugu plans, workers implement, and `tools/agent-runner/run.mjs` stays wiring only.\n',
+    '# Copilot Instructions\n\nBefore making agent-pipeline changes in this repo, read:\n\n- `.github/instructions/agent-pipeline.instructions.md`\n- `AGENTS.md`\n- `agent-context/current-state.md`\n- `agent-context/next-tasks.md`\n- `agent-context/architecture-decisions.md`\n- `agent-context/review-checklist.md`\n- `agent-context/handoff.md`\n\nUse Orchestrator mode for implementation work: Copilot handles intake, QA, and final approval; Fugu plans and validates worker PR-like changes; workers implement in isolated task branches/worktrees; and `tools/agent-runner/run.mjs` stays wiring only. Stage NPM publishing on `release/npm`, not ordinary implementation branches.\n',
   );
 
   if (!skipAgentsMd) {
     await writeIfMissing(
       join(targetRoot, 'AGENTS.md'),
-      '# Agent Guide\n\n## Architecture Rules\n\n- Add this repo\'s architecture boundaries, package manager, framework versions, and security rules.\n- Never store or print API keys or other secrets.\n\n## Agent Orchestrator Mode\n\n- Copilot acts as Client/QA.\n- Fugu plans bounded subtasks.\n- Workers write product code directly into this repo.\n- `tools/agent-runner/run.mjs` is wiring only and makes no product decisions.\n\n## Useful Commands\n\n```sh\nnode tools/agent-runner/run.mjs doctor\nnode tools/agent-runner/run.mjs run --task agent-tasks/<task>.md\n```\n',
+      '# Agent Guide\n\n## Architecture Rules\n\n- Add this repo\'s architecture boundaries, package manager, framework versions, and security rules.\n- Never store or print API keys or other secrets.\n\n## Agent Orchestrator Mode\n\n- Copilot acts as Client/QA and final approver.\n- Fugu plans bounded subtasks and validates worker PR-like changes.\n- Workers write product code in isolated task branches/worktrees.\n- `tools/agent-runner/run.mjs` is wiring only and makes no product decisions.\n- Stage NPM publishing on `release/npm` and publish only after explicit approval.\n\n## Useful Commands\n\n```sh\nnode tools/agent-runner/run.mjs doctor\nnode tools/agent-runner/run.mjs run --task agent-tasks/<task>.md\n```\n',
     );
   }
 }

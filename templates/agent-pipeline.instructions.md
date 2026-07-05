@@ -22,14 +22,19 @@ When the user asks for implementation through Agent Orchestrator mode or the
 agent-pipeline:
 
 - Copilot is Client/QA: optimize the request, run the pipeline, test real output,
-  and approve or reject.
-- Fugu is the orchestrator: it plans bounded subtasks and coordinates workers.
+  and approve or reject Fugu-satisfied candidates.
+- Fugu is the orchestrator: it plans bounded subtasks, coordinates workers, and
+  validates worker PR-like changes before they reach the Client.
 - DeepSeek and gpt-4o-mini are workers: they write product code directly into the
-  real repo.
+  real repo from isolated task branches/worktrees.
 - `tools/agent-runner/run.mjs` is wiring only. Do not treat it as another actor or
   make it decide product behavior.
 - Do not hand-edit product code while acting in Orchestrator mode. Send failures
   back through a feedback file and rerun the pipeline.
+- Do not semantically validate worker PRs as Copilot. Fugu accepts/rejects worker
+  PRs; Copilot/the Client approves only after Fugu is satisfied.
+- Do not publish to NPM from ordinary implementation branches. Use `release/npm`
+  for package release preparation and publish only after explicit client approval.
 
 Normal loop:
 

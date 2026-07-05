@@ -93,9 +93,11 @@
     "container": {
       "type": "object",
       "additionalProperties": false,
-      "description": "When enabled, each build sub-task runs in its own ephemeral Docker container (repo bind-mounted). Parallelism is governed by loop.concurrency and Fugu's dependsOn graph.",
+      "description": "When enabled, Fugu orchestration and worker build sub-tasks run in ephemeral Docker containers (repo bind-mounted). Parallelism is governed by loop.concurrency and Fugu's dependsOn graph.",
       "properties": {
         "enabled": { "type": "boolean" },
+        "orchestrator": { "type": "boolean", "description": "When true or omitted, run the Fugu orchestration API call inside the runner container." },
+        "workers": { "type": "boolean", "description": "When true or omitted, run each build sub-task inside its own runner container." },
         "image": { "type": "string" },
         "dockerfile": { "type": "string" }
       }
