@@ -68,6 +68,28 @@ Nothing about endpoints, models, or keys lives in code — only in
 `pipeline.config.json`, and keys are referenced by env-var **name** only. The
 engine is the same bytes in every repo; the config is the only variable.
 
+## Installer skill
+
+This repo also ships a reusable Copilot skill at
+`.github/skills/agent-orchestrator-installer/`. Install that skill into another
+repo when you want the agent to bootstrap Orchestrator mode for you. The bundled
+script vendors `tools/agent-runner/`, runs `init`, creates starter
+`agent-context/`, `agent-tasks/`, and `agent-output/` folders, and writes an env
+example with key names only.
+
+From a checkout of this repo:
+
+```sh
+node .github/skills/agent-orchestrator-installer/scripts/install-agent-orchestrator.mjs --target /path/to/target-repo --source "$PWD"
+```
+
+From a repo where only the skill is installed, omit `--source`; the script fetches
+`hartou/agent-pipeline` through GitHub CLI auth:
+
+```sh
+node .github/skills/agent-orchestrator-installer/scripts/install-agent-orchestrator.mjs --target /path/to/target-repo
+```
+
 ## Secrets
 
 Keys are read from `.env` at the repo root at call time. They are never stored in
