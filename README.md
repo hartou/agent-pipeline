@@ -18,6 +18,10 @@ Only client-approved work is integrated.
 
 ![Agent Pipeline architecture](img/agent-pipeline-architecture.png)
 
+The diagram shows runtime coordination only: Copilot, Fugu, worker containers,
+worktrees, validation, QA, and approval. Merge, deployment, and npm release
+governance are intentionally separate.
+
 ## Layout
 
 ```
