@@ -54,7 +54,40 @@ docker compose --profile agents build agent-worker   # build the worker image (o
 Set `container.enabled: false` to fall back to in-process execution (still parallel,
 governed by `loop.concurrency`).
 
-## Deploying to a new repo (deterministic)
+## Install into a repo
+
+The normal install path is npm/npx from the target repository:
+
+```sh
+cd /path/to/target-repo
+npx @hartou/agent-pipeline init --target .
+```
+
+The bootstrap installs:
+
+- `tools/agent-runner/` with the pinned runner and templates.
+- `.github/skills/agent-orchestrator-installer/` for future Copilot-assisted installs.
+- `.github/agents/orchestrator.agent.md`.
+- `.github/copilot-instructions.md` if the repo does not already have one.
+- `AGENTS.md` if the repo does not already have one.
+- starter `agent-context/`, `agent-tasks/`, and `agent-output/` folders.
+- `.env.agent-pipeline.example` with env var names only.
+
+Existing files are skipped unless you pass `--force`, so brownfield installs stay
+conservative by default.
+
+After install, edit `tools/agent-runner/pipeline.config.json` for the target repo,
+add real API keys to `.env` or your shell, and run:
+
+```sh
+node tools/agent-runner/run.mjs doctor
+```
+
+Nothing about endpoints, models, or keys lives in code — only in
+`pipeline.config.json`, and keys are referenced by env-var **name** only. The
+engine is the same bytes in every repo; the config is the only variable.
+
+## Fallback/dev install
 
 1. Copy the `tools/agent-runner/` folder into the target repo (vendored — pinned
    by content, offline, no install step).
@@ -63,10 +96,6 @@ governed by `loop.concurrency`).
 3. Edit `pipeline.config.json`: set `project`, `paths`, `stackFacts`, and the `qa`
    commands for this repo. Add the referenced keys to `.env`.
 4. `node tools/agent-runner/run.mjs doctor` until green, then `run`.
-
-Nothing about endpoints, models, or keys lives in code — only in
-`pipeline.config.json`, and keys are referenced by env-var **name** only. The
-engine is the same bytes in every repo; the config is the only variable.
 
 ## Installer skill
 
@@ -77,7 +106,8 @@ script vendors `tools/agent-runner/`, runs `init`, creates starter
 `agent-context/`, `agent-tasks/`, and `agent-output/` folders, and writes an env
 example with key names only. The starter context includes
 `agent-context/handoff.md`, a compact conversation handoff note to update before
-ending long sessions or after accepted pipeline runs.
+ending long sessions or after accepted pipeline runs. The npm/npx bootstrap uses
+this same installer under the hood.
 
 There are two normal ways to use it.
 

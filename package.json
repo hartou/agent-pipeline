@@ -1,9 +1,28 @@
 {
-  "name": "agent-pipeline",
+  "name": "@hartou/agent-pipeline",
   "version": "0.2.0",
-  "private": true,
   "description": "Deterministic, config-driven multi-agent delivery pipeline (client -> orchestrator -> workers). Zero runtime dependencies.",
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hartou/agent-pipeline.git"
+  },
+  "homepage": "https://github.com/hartou/agent-pipeline#readme",
+  "bugs": {
+    "url": "https://github.com/hartou/agent-pipeline/issues"
+  },
+  "keywords": [
+    "agents",
+    "copilot",
+    "orchestration",
+    "multi-agent",
+    "automation",
+    "developer-tools"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "agent-pipeline": "./run.mjs"
   },

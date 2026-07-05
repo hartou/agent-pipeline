@@ -117,6 +117,25 @@ async function copyRunner({ sourceRoot, targetRoot, force }) {
   return true;
 }
 
+async function copySkill({ sourceRoot, targetRoot, force }) {
+  const sourceSkill = join(sourceRoot, '.github', 'skills', 'agent-orchestrator-installer');
+  const targetSkill = join(targetRoot, '.github', 'skills', 'agent-orchestrator-installer');
+  if (!existsSync(sourceSkill)) throw new Error(`Source is missing installer skill: ${sourceSkill}`);
+  if (existsSync(targetSkill)) {
+    if (!force) {
+      console.error(`[installer] exists, skipped: ${targetSkill}`);
+      console.error('[installer] pass --force to replace the existing installer skill.');
+      return false;
+    }
+    await rm(targetSkill, { recursive: true, force: true });
+  }
+
+  await mkdir(dirname(targetSkill), { recursive: true });
+  await cp(sourceSkill, targetSkill, { recursive: true });
+  console.error(`[installer] wrote ${targetSkill}`);
+  return true;
+}
+
 async function writeIfMissing(filePath, content) {
   if (existsSync(filePath)) {
     console.error(`[installer] exists, skipped: ${filePath}`);
@@ -161,6 +180,10 @@ async function scaffoldRepoFiles({ targetRoot, skipAgentsMd }) {
     join(targetRoot, '.env.agent-pipeline.example'),
     'SAKANA_FUGU_API_KEY=\nDEEPSEEK_API_KEY=\nOPENAI_API_KEY=\nFUGU_MODEL=fugu\nDeepSeek_Model=deepseek-v4-pro\nOPENAI_MODEL=gpt-4o-mini\n',
   );
+  await writeIfMissing(
+    join(targetRoot, '.github', 'copilot-instructions.md'),
+    '# Copilot Instructions\n\nBefore making agent-pipeline changes in this repo, read:\n\n- `AGENTS.md`\n- `agent-context/current-state.md`\n- `agent-context/next-tasks.md`\n- `agent-context/architecture-decisions.md`\n- `agent-context/review-checklist.md`\n- `agent-context/handoff.md`\n\nUse Orchestrator mode for implementation work: Copilot handles intake and QA, Fugu plans, workers implement, and `tools/agent-runner/run.mjs` stays wiring only.\n',
+  );
 
   if (!skipAgentsMd) {
     await writeIfMissing(
@@ -200,6 +223,7 @@ async function main() {
 
   try {
     await copyRunner({ sourceRoot, targetRoot, force: args.force });
+    await copySkill({ sourceRoot, targetRoot, force: args.force });
     await scaffoldRepoFiles({ targetRoot, skipAgentsMd: args.skipAgentsMd });
     if (!args.skipInit) await runInit({ targetRoot, force: args.force });
 

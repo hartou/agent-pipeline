@@ -187,7 +187,7 @@ async function readContextFiles(files) {
   return parts.join('\n\n---\n\n');
 }
 
-const BOOL_FLAGS = new Set(['force']);
+const BOOL_FLAGS = new Set(['force', 'skip-init', 'skip-agents-md']);
 function parseArgs(argv) {
   const args = { _: [], context: [] };
   for (let i = 0; i < argv.length; i += 1) {
@@ -470,6 +470,30 @@ async function doInit({ force }) {
   process.stderr.write('[init] done. Edit pipeline.config.json for this repo, add keys to .env, then: doctor\n');
 }
 
+function isVendoredRunner() {
+  return ENGINE_DIR === join(ROOT, 'tools', 'agent-runner');
+}
+
+function shouldBootstrapTarget(args) {
+  if (isVendoredRunner()) return false;
+  if (args.target) return true;
+  if (ENGINE_DIR === ROOT) return false;
+  return existsSync(join(ENGINE_DIR, '.github', 'skills', 'agent-orchestrator-installer', 'scripts', 'install-agent-orchestrator.mjs'));
+}
+
+function runBootstrapInit(args) {
+  const installerPath = join(ENGINE_DIR, '.github', 'skills', 'agent-orchestrator-installer', 'scripts', 'install-agent-orchestrator.mjs');
+  if (!existsSync(installerPath)) throw new Error(`Missing npm bootstrap installer: ${installerPath}`);
+  const target = resolve(args.target || process.cwd());
+  const installerArgs = [installerPath, '--target', target, '--source', ENGINE_DIR];
+  if (args.force) installerArgs.push('--force');
+  if (args['skip-init']) installerArgs.push('--skip-init');
+  if (args['skip-agents-md']) installerArgs.push('--skip-agents-md');
+  const result = spawnSync(process.execPath, installerArgs, { cwd: target, stdio: 'inherit' });
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(`Bootstrap init failed with exit code ${result.status}`);
+}
+
 function validateConfig(cfg) {
   const errs = [];
   const need = (obj, keys, path) => keys.forEach((k) => { if (obj?.[k] === undefined) errs.push(`missing ${path}.${k}`); });
@@ -698,6 +722,10 @@ async function main() {
   const mode = args._[0];
 
   if (mode === 'init') {
+    if (shouldBootstrapTarget(args)) {
+      runBootstrapInit(args);
+      return;
+    }
     await doInit({ force: !!args.force });
     return;
   }

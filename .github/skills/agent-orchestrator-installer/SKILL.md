@@ -11,7 +11,9 @@ Use this skill when a user wants to install the Agent Orchestrator mode into a r
 ## What This Installs
 
 - `tools/agent-runner/` with the repo-agnostic `run.mjs` wiring.
+- `.github/skills/agent-orchestrator-installer/` for future Copilot-assisted installs.
 - `.github/agents/orchestrator.agent.md` via `run.mjs init`.
+- `.github/copilot-instructions.md` if the target repo does not already have one.
 - `tools/agent-runner/pipeline.config.json` via `run.mjs init`.
 - Starter `agent-context/`, `agent-tasks/`, and `agent-output/` folders.
 - `agent-context/handoff.md` for concise conversation resume notes across Copilot sessions.
@@ -23,7 +25,13 @@ Secrets are never generated, requested, printed, or committed. The user adds rea
 ## Procedure
 
 1. Confirm the target repo path and check its git state.
-2. Run the bundled installer script from the target repo or pass `--target`:
+2. Prefer the npm/npx bootstrap from the target repo:
+
+```sh
+npx @hartou/agent-pipeline init --target .
+```
+
+Or run the bundled installer script from the target repo or pass `--target`:
 
 ```sh
 node .github/skills/agent-orchestrator-installer/scripts/install-agent-orchestrator.mjs --target /path/to/repo

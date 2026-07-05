@@ -109,11 +109,11 @@ replace existing runner/config/agent files.
 - Scoped names checked with no result at last run:
   - `@hartou/agent-pipeline`
   - `@hartou/create-agent-pipeline`
-- Current `package.json` still has `"private": true`, so it cannot be published
-  until that changes.
-- Current package binary points to `./run.mjs`, but `run.mjs` assumes it is
-  already vendored inside `tools/agent-runner/` of a target repo. For public npm
-  UX, add a bootstrap command before publishing.
+- `package.json` now uses the scoped name `@hartou/agent-pipeline`, MIT license
+  metadata, public publish config, and no `private` flag.
+- The package binary points to `./run.mjs`. In npm-package context, `init` now
+  delegates to the installer script with `--source <package-root>` so public npm
+  UX can bootstrap a normal target repo.
 
 Recommended public command:
 
@@ -154,11 +154,12 @@ Suggested aliases for public UX:
    - add `repository`, `homepage`, `bugs`, `keywords`, `license`, and
      `publishConfig.access` if publishing scoped public.
 4. Add an npm bootstrap mode to the CLI, so `npx @hartou/agent-pipeline init`
-   works from a package cache and installs into the target repo.
+  works from a package cache and installs into the target repo. Done locally;
+  validate from a packed tarball before publishing.
 5. Add an optional `.github/copilot-instructions.md` template that points to
   `AGENTS.md`, `agent-context/current-state.md`, `agent-context/next-tasks.md`,
   `agent-context/architecture-decisions.md`, `agent-context/review-checklist.md`,
-  and `agent-context/handoff.md`.
+  and `agent-context/handoff.md`. Done locally; installer skips existing files.
 6. Ensure npm package includes every file needed by the bootstrapper:
    - `run.mjs`
    - `package.json`
