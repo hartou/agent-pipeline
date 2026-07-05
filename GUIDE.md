@@ -94,6 +94,12 @@ each build sub‑task runs in its **own ephemeral Docker container** (the repo i
 bind‑mounted so it writes real files; keys come from the mounted `.env`). This gives
 isolation and lets you scale the number of workers.
 
+Docker is a prerequisite for that containerized worker mode. Install Docker
+Desktop on macOS/Windows or Docker Engine on Linux, then confirm `docker version`
+works from the shell where you run the pipeline. If Docker is unavailable, set
+`container.enabled: false` in `tools/agent-runner/pipeline.config.json` to run
+workers in process instead.
+
 Safety net: the wiring will never run two sub‑tasks that touch the **same file** at
 once, even if Fugu forgot to sequence them — but Fugu should chain file‑sharing work
 with `dependsOn`. Build the worker image once with
@@ -115,6 +121,13 @@ API keys are read from `.env` at call time. They are **never** stored in config,
 never printed, and never sent to the browser. The config only references keys by
 their env‑var **name**.
 
+Create provider keys from the provider dashboards, then store the values locally in
+`.env` using the names from `.env.agent-pipeline.example`:
+
+- Fugu / Sakana AI: https://platform.sakana.ai/
+- DeepSeek: https://platform.deepseek.com/api_keys
+- OpenAI: https://platform.openai.com/api-keys
+
 ### Telemetry (two tiers)
 
 - **`telemetry.csv`** (automatic) — one row per model call: tokens, latency, HTTP
@@ -123,6 +136,23 @@ their env‑var **name**.
 - **`model-worker-performance.csv`** (curated) — the hand‑owned acceptance ledger
   with human judgment (what worked, what to adjust). The pipeline only *drafts* a
   row for you to annotate; it never overwrites your history.
+
+Run `node tools/agent-runner/run.mjs report` after real runs to summarize calls,
+tokens, latency, estimated cost, QA status, and file counts. Keep the automatic CSV
+as raw evidence; use the curated CSV to record what a human learned. Redact secrets,
+customer data, and raw prompts before sharing telemetry in an issue or PR.
+
+### Contributing improvements upstream
+
+Target repos receive a copied runner and skill, so local experiments happen in the
+product repo. To contribute back, port the validated change to a checkout or fork of
+`https://github.com/hartou/agent-pipeline` and open a PR there. Keep contributions
+focused on portable pipeline files such as `run.mjs`, `templates/`,
+`.github/skills/agent-orchestrator-installer/`, docs, and config schema changes.
+
+Include the package `engine_version`, sanitized telemetry summary, and validation
+commands in the PR. Do not include `.env`, API keys, private product code, or raw
+customer data.
 
 ---
 
@@ -166,6 +196,11 @@ first; the raw prompt is never forwarded blindly.
 Keys live only in `.env`. The config stores just the **name** of each key's env var,
 so `pipeline.config.json` is safe to commit. Keys are never printed or bundled.
 
+**Q: Where do I create the keys?**
+Use the provider dashboards: Fugu / Sakana AI at https://platform.sakana.ai/,
+DeepSeek at https://platform.deepseek.com/api_keys, and OpenAI at
+https://platform.openai.com/api-keys. Store the resulting values only in `.env`.
+
 **Q: How do I use this in another repo?**
 Copy the `tools/agent-runner/` folder in, run `init` (scaffolds the config and the
 agent mode; never overwrites without `--force`), edit `pipeline.config.json` for
@@ -193,6 +228,12 @@ graph. It does not decide the batching.
 Every call is logged to `telemetry.csv` automatically. Run `report` for a per‑worker
 summary (calls, tokens, average latency, estimated cost) and a draft row for the
 curated ledger.
+
+**Q: Can an installed repo contribute improvements back?**
+Yes, but not as a direct PR from the target repo's normal branch. The runner is
+vendored into that repo, so port the validated change to a clone or fork of
+`hartou/agent-pipeline`, then open the PR there. Include sanitized telemetry and
+validation output so the upstream project can judge whether the change generalizes.
 
 **Q: Will it run forever or rack up cost?**
 No. The loop is bounded by `maxRounds` in the config, and cost is tracked per call

@@ -47,6 +47,10 @@ With `container.enabled` in the config, each build sub-task runs in its **own
 ephemeral Docker container** (repo bind-mounted, keys from the mounted `.env`).
 Two sub-tasks that touch the same file are never run at the same time.
 
+Docker is required for this default containerized mode. Install Docker Desktop on
+macOS/Windows or Docker Engine on Linux, and confirm `docker version` works before
+running containerized workers.
+
 ```sh
 docker compose --profile agents build agent-worker   # build the worker image (or the wiring builds it on demand)
 ```
@@ -55,6 +59,14 @@ Set `container.enabled: false` to fall back to in-process execution (still paral
 governed by `loop.concurrency`).
 
 ## Install into a repo
+
+Prerequisites:
+
+- Node.js 20 or newer.
+- Docker, for the default ephemeral-container worker model. Install Docker
+  Desktop on macOS/Windows or Docker Engine on Linux, then make sure
+  `docker version` works from your shell.
+- Provider API keys for Fugu / Sakana AI, DeepSeek, and OpenAI.
 
 The normal install path is npm/npx from the target repository:
 
@@ -162,6 +174,20 @@ node tools/agent-runner/run.mjs doctor
 Keys are read from `.env` at the repo root at call time. They are never stored in
 config, never printed, and never sent to the browser.
 
+Create provider keys here, then put only the values in your local `.env`:
+
+- Fugu / Sakana AI: https://platform.sakana.ai/
+- DeepSeek: https://platform.deepseek.com/api_keys
+- OpenAI: https://platform.openai.com/api-keys
+
+The default env var names are listed in `.env.agent-pipeline.example`:
+
+```sh
+SAKANA_FUGU_API_KEY=
+DEEPSEEK_API_KEY=
+OPENAI_API_KEY=
+```
+
 ## Telemetry (two-tier)
 
 - **`telemetry.csv`** (auto) — one machine-written row per model call:
@@ -174,3 +200,47 @@ config, never printed, and never sent to the browser.
 `est_cost_usd` is computed from each actor's `pricing` in config (blank if pricing
 is 0/unset — never fabricated). `engine_version` (from this package's `version`)
 is stamped on every row so any result is traceable to the engine that produced it.
+
+Use telemetry after real runs like this:
+
+```sh
+node tools/agent-runner/run.mjs report
+```
+
+Keep `agent-context/telemetry.csv` as the raw machine log and annotate
+`agent-context/model-worker-performance.csv` with human judgment: which worker was
+best for which task shape, what failed, what prompt/config adjustment helped, and
+whether QA passed. Do not paste secrets, raw `.env` contents, or sensitive customer
+data into the curated ledger.
+
+## Contributing back from installed repos
+
+Installed repos receive a vendored copy of the runner and skill. That means they
+can experiment locally, but they cannot open a PR directly from the target repo's
+normal branch because its git history belongs to that product repo, not to
+`hartou/agent-pipeline`.
+
+The safe contribution path is:
+
+1. In the target repo, make and validate changes only under copied pipeline files:
+  `tools/agent-runner/`, `.github/skills/agent-orchestrator-installer/`,
+  `.github/agents/orchestrator.agent.md`, templates, or docs.
+2. Open or clone `https://github.com/hartou/agent-pipeline` separately.
+3. Port the same changes into that checkout, or create a patch from the target
+  repo and apply it to the upstream checkout.
+4. Run the package checks from the upstream checkout:
+
+```sh
+node --check run.mjs
+node --check .github/skills/agent-orchestrator-installer/scripts/install-agent-orchestrator.mjs
+npm pack --dry-run
+```
+
+5. Open a GitHub PR against `hartou/agent-pipeline`. Include the relevant
+  telemetry summary and validation output, but redact secrets and private product
+  details.
+
+For lighter feedback, open an issue with the engine version, provider/model, task
+shape, QA result, and any sanitized telemetry insight. The `engine_version` column
+exists specifically so downstream results can be tied back to the package version
+that produced them.
