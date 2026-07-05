@@ -16,6 +16,8 @@ workers fix in place; re-test — until the client approves.
 
 > New here? Read [GUIDE.md](./GUIDE.md) for the full concept + a FAQ.
 
+![Agent Pipeline architecture](img/agent-pipeline-architecture.png)
+
 ## Layout
 
 ```
