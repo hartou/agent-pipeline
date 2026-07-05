@@ -12,7 +12,7 @@ function usage() {
   return `Install Agent Orchestrator mode into a target repository.
 
 Usage:
-  node install-agent-orchestrator.mjs [--target <path>] [--source <path>] [--repo <owner/name>] [--ref <ref>] [--force] [--skip-init] [--skip-agents-md]
+  node install-agent-orchestrator.mjs [--target <path>] [--source <path>] [--repo <owner/name>] [--ref <ref>] [--force] [--skill] [--skip-skill] [--skip-init] [--skip-agents-md]
 
 Options:
   --target <path>       Target repository root. Defaults to current directory.
@@ -20,6 +20,8 @@ Options:
   --repo <owner/name>   GitHub repo to fetch when --source is omitted. Default: ${DEFAULT_REPO}.
   --ref <ref>           Branch or tag to fetch when --source is omitted. Default: ${DEFAULT_REF}.
   --force               Replace existing tools/agent-runner and force init templates.
+  --skill               Install the Copilot skill. This is the default; the flag is accepted for explicit npm usage.
+  --skip-skill          Do not install .github/skills/agent-orchestrator-installer.
   --skip-init           Copy runner only; do not run run.mjs init.
   --skip-agents-md      Do not create starter AGENTS.md.
   --help                Show this help.
@@ -33,6 +35,7 @@ function parseArgs(argv) {
     repo: DEFAULT_REPO,
     ref: DEFAULT_REF,
     force: false,
+    installSkill: true,
     skipInit: false,
     skipAgentsMd: false,
   };
@@ -51,6 +54,10 @@ function parseArgs(argv) {
       args.ref = argv[++index];
     } else if (arg === '--force') {
       args.force = true;
+    } else if (arg === '--skill') {
+      args.installSkill = true;
+    } else if (arg === '--skip-skill') {
+      args.installSkill = false;
     } else if (arg === '--skip-init') {
       args.skipInit = true;
     } else if (arg === '--skip-agents-md') {
@@ -223,7 +230,7 @@ async function main() {
 
   try {
     await copyRunner({ sourceRoot, targetRoot, force: args.force });
-    await copySkill({ sourceRoot, targetRoot, force: args.force });
+    if (args.installSkill) await copySkill({ sourceRoot, targetRoot, force: args.force });
     await scaffoldRepoFiles({ targetRoot, skipAgentsMd: args.skipAgentsMd });
     if (!args.skipInit) await runInit({ targetRoot, force: args.force });
 

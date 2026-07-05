@@ -60,8 +60,12 @@ The normal install path is npm/npx from the target repository:
 
 ```sh
 cd /path/to/target-repo
-npx @hartou/agent-pipeline init --target .
+npx @hartou/agent-pipeline init --target . --skill
 ```
+
+The `--skill` flag is explicit for readability; the npm bootstrap installs the
+Copilot skill by default. Use `--skip-skill` only if you want the runner without
+the reusable installer skill.
 
 The bootstrap installs:
 

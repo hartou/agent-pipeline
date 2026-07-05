@@ -28,8 +28,12 @@ Secrets are never generated, requested, printed, or committed. The user adds rea
 2. Prefer the npm/npx bootstrap from the target repo:
 
 ```sh
-npx @hartou/agent-pipeline init --target .
+npx @hartou/agent-pipeline init --target . --skill
 ```
+
+`--skill` is explicit for readability; skill installation is the default. Use
+`--skip-skill` only when the target repo should not receive the reusable Copilot
+installer skill.
 
 Or run the bundled installer script from the target repo or pass `--target`:
 
@@ -90,6 +94,8 @@ node tools/agent-runner/run.mjs run --task agent-tasks/smoke-test.md
 --repo <owner/name>   GitHub repo to fetch when --source is omitted. Default: hartou/agent-pipeline.
 --ref <ref>           Branch or tag to fetch. Default: main.
 --force               Replace existing tools/agent-runner and force init templates.
+--skill               Install the Copilot skill. Default; accepted for explicit npm usage.
+--skip-skill          Do not install .github/skills/agent-orchestrator-installer.
 --skip-init           Copy runner only; do not run run.mjs init.
 --skip-agents-md      Do not create a starter AGENTS.md.
 ```
