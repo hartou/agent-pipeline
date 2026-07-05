@@ -37,7 +37,7 @@ node tools/agent-runner/run.mjs doctor       # preflight: node version, config, 
 node tools/agent-runner/run.mjs plan --task agent-tasks/<f>.md   # dry-run decomposition
 node tools/agent-runner/run.mjs build --plan <plan.json> --subtask <id>  # one subtask
 node tools/agent-runner/run.mjs qa           # run the repo's QA commands
-node tools/agent-runner/run.mjs run --task agent-tasks/<f>.md    # full loop plan→build→qa→retry→report
+node tools/agent-runner/run.mjs run --task agent-tasks/<f>.md    # full loop plan→worker branches→Fugu validation→client approval
 node tools/agent-runner/run.mjs report [--run <run_id>]          # aggregate telemetry
 ```
 
@@ -91,7 +91,7 @@ then publish and tag the release.
 Prerequisites:
 
 - Node.js 20 or newer.
-- Docker, for the default ephemeral-container worker model. Install Docker
+- Docker, for the default ephemeral-container orchestrator and worker model. Install Docker
   Desktop on macOS/Windows or Docker Engine on Linux, then make sure
   `docker version` works from your shell.
 - Provider API keys for Fugu / Sakana AI, DeepSeek, and OpenAI.
