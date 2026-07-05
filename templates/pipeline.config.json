@@ -73,7 +73,9 @@
     "concurrency": 3
   },
   "container": {
-    "enabled": false,
+    "enabled": true,
+    "orchestrator": true,
+    "workers": true,
     "image": "agent-pipeline-runner:local",
     "dockerfile": "tools/agent-runner/Dockerfile"
   },

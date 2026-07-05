@@ -13,7 +13,7 @@
 // env-var NAME only and read from .env at call time; never stored or printed.
 //
 // Verbs:
-//   init [--force]                              scaffold config + agent mode
+//   init [--force|--upgrade]                    scaffold config + agent mode
 //   doctor                                      preflight: node, config, keys, QA
 //   plan   --task <f> [--feedback <f>]          orchestrate -> JSON plan
 //   build  --plan <p> --subtask <id> [--provider p] [--context f...]
@@ -31,6 +31,10 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(process.cwd());
 const ENGINE_DIR = dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = join(ENGINE_DIR, 'pipeline.config.json');
+
+function engineScriptRel() {
+  return relative(ROOT, join(ENGINE_DIR, 'run.mjs')) || 'run.mjs';
+}
 
 function engineVersion() {
   try {
@@ -187,7 +191,7 @@ async function readContextFiles(files) {
   return parts.join('\n\n---\n\n');
 }
 
-const BOOL_FLAGS = new Set(['force', 'skill', 'skip-skill', 'skip-init', 'skip-agents-md']);
+const BOOL_FLAGS = new Set(['force', 'upgrade', 'skill', 'skip-skill', 'skip-init', 'skip-agents-md']);
 function parseArgs(argv) {
   const args = { _: [], context: [] };
   for (let i = 0; i < argv.length; i += 1) {
@@ -281,7 +285,7 @@ async function writeRepoFiles(files) {
 
 // ---- pipeline stages ----
 
-async function doOrchestrate({ reg, env, task, feedback, runId, round }) {
+async function doOrchestrateInProcess({ reg, env, task, feedback, runId, round }) {
   const cfg = resolveActor('orchestrator', reg, env);
   const requestPath = reg.paths?.request ? resolve(ROOT, reg.paths.request) : null;
   const request = requestPath && existsSync(requestPath) ? await readFile(requestPath, 'utf8') : '';
@@ -311,6 +315,61 @@ async function doOrchestrate({ reg, env, task, feedback, runId, round }) {
     result: 'plan_ok', est_cost_usd: estCost(cfg.pricing, out.usage),
   });
   return out.content;
+}
+
+function containerOrchestratorEnabled(reg) {
+  return !!reg.container?.enabled && reg.container.orchestrator !== false;
+}
+
+function containerWorkersEnabled(reg) {
+  return !!reg.container?.enabled && reg.container.workers !== false;
+}
+
+function safeName(x) {
+  return String(x).replace(/[^a-zA-Z0-9_.-]/g, '_');
+}
+
+function spawnCapture(command, args) {
+  return new Promise((resolveP) => {
+    const child = spawn(command, args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk;
+      process.stderr.write(chunk);
+    });
+    child.on('close', (code) => resolveP({ exitCode: code ?? 1, stdout, stderr }));
+    child.on('error', (error) => resolveP({ exitCode: 1, stdout, stderr: `${stderr}${error.message}` }));
+  });
+}
+
+async function doOrchestrateInContainer({ reg, task, feedback, runId, round }) {
+  ensureImage(reg);
+  const artifacts = reg.paths?.artifacts || 'agent-output';
+  const inputRel = join(artifacts, '.orchestrator', `${safeName(runId)}-r${round}.json`);
+  await mkdir(dirname(resolve(ROOT, inputRel)), { recursive: true });
+  await writeFile(resolve(ROOT, inputRel), JSON.stringify({ task, feedback, runId, round }), 'utf8');
+  const shardRel = `${artifacts}/.telemetry/${safeName(runId)}__orchestrator_r${round}.csv`;
+  const args = [
+    'run', '--rm',
+    '-v', `${ROOT}:/repo`, '-w', '/repo',
+    '-e', `PIPELINE_TELEMETRY_CSV=/repo/${shardRel}`,
+    reg.container.image,
+    'node', engineScriptRel(), 'orchestrate-call', '--input', inputRel,
+  ];
+  process.stderr.write(`[plan] container orchestrator (${reg.container.image})...\n`);
+  const result = await spawnCapture('docker', args);
+  await mergeTelemetryShards(reg, join(artifacts, '.telemetry'));
+  if (result.exitCode !== 0) {
+    throw new Error(`containerized orchestrator failed with exit code ${result.exitCode}: ${result.stderr.slice(-500)}`);
+  }
+  return result.stdout.trim();
+}
+
+async function doOrchestrate(opts) {
+  if (containerOrchestratorEnabled(opts.reg)) return doOrchestrateInContainer(opts);
+  return doOrchestrateInProcess(opts);
 }
 
 async function doBuildSubtask({ reg, env, sub, providerOverride, contextFiles, runId, round }) {
@@ -488,6 +547,7 @@ function runBootstrapInit(args) {
   const target = resolve(args.target || process.cwd());
   const installerArgs = [installerPath, '--target', target, '--source', ENGINE_DIR];
   if (args.force) installerArgs.push('--force');
+  if (args.upgrade) installerArgs.push('--upgrade');
   if (args.skill) installerArgs.push('--skill');
   if (args['skip-skill']) installerArgs.push('--skip-skill');
   if (args['skip-init']) installerArgs.push('--skip-init');
@@ -590,15 +650,14 @@ function ensureImage(reg) {
 }
 
 function makeContainerRunner({ reg, image, planRel, runId, round, artifacts }) {
-  const safe = (x) => String(x).replace(/[^a-zA-Z0-9_.-]/g, '_');
   return (sub) => new Promise((resolveP) => {
-    const shardRel = `${artifacts}/.telemetry/${safe(runId)}__${safe(sub.id)}.csv`;
+    const shardRel = `${artifacts}/.telemetry/${safeName(runId)}__${safeName(sub.id)}.csv`;
     const args = [
       'run', '--rm',
       '-v', `${ROOT}:/repo`, '-w', '/repo',
       '-e', `PIPELINE_TELEMETRY_CSV=/repo/${shardRel}`,
       image,
-      'node', 'tools/agent-runner/run.mjs', 'build',
+      'node', engineScriptRel(), 'build',
       '--plan', planRel, '--subtask', sub.id, '--run-id', runId, '--round', String(round),
     ];
     process.stderr.write(`[run ${runId}] container ${sub.id} (${sub.worker})...\n`);
@@ -672,7 +731,7 @@ async function doRun({ reg, env, task, taskFile }) {
     }
     const buildable = (plan.subtasks || []).filter((s) => (s.kind || 'build') !== 'verify');
     const concurrency = Math.max(1, reg.loop?.concurrency || 1);
-    const useContainers = !!reg.container?.enabled;
+    const useContainers = containerWorkersEnabled(reg);
     let runOne;
     if (useContainers) {
       ensureImage(reg);
@@ -752,6 +811,15 @@ async function main() {
     await mkdir(dirname(resolve(ROOT, out)), { recursive: true });
     await writeFile(resolve(ROOT, out), content, 'utf8');
     process.stderr.write(`[plan] wrote ${out}\n`);
+    process.stdout.write(content + '\n');
+    return;
+  }
+
+  if (mode === 'orchestrate-call') {
+    if (!args.input) throw new Error('orchestrate-call requires --input');
+    const reg = await loadRegistry();
+    const input = JSON.parse(await readFile(resolve(ROOT, args.input), 'utf8'));
+    const content = await doOrchestrateInProcess({ reg, env, task: input.task || '', feedback: input.feedback || '', runId: input.runId || `plan-${Date.now()}`, round: Number(input.round || 0) });
     process.stdout.write(content + '\n');
     return;
   }

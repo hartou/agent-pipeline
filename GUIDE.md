@@ -23,15 +23,15 @@ loop using three different AI models, each playing a role it's good at.
 |------|-----|--------------|
 | **Client** | You / Copilot (any model — Opus 4.8, GPT‑5.5, …) | Define the work, optimize the request, **test the real output**, approve or reject. The only approver. |
 | **Orchestrator** | Fugu (Sakana) | The chief engineer. Breaks the request into bounded sub‑tasks and assigns each to the best worker. |
-| **Workers** | DeepSeek‑4‑pro, gpt‑4o‑mini | The developers. They write real code directly into the repo. |
+| **Workers** | DeepSeek‑4‑pro, gpt‑4o‑mini | The developers. They write real code in isolated task branches/worktrees. |
 
 There is also one thing that is **not** an actor: the **wiring** — the small
 command‑line program [`run.mjs`](./run.mjs). The three actors are AI models behind
 web APIs; they cannot call each other. `run.mjs` is the phone line between them: it
 sends your request to Fugu, reads Fugu's plan, sends each sub‑task to the right
-worker, writes the workers' files, runs your tests, and carries results back to
-Fugu. It carries messages — it does **not** make decisions. All the thinking
-belongs to the actors.
+worker, carries worker PR-like changes back to Fugu for validation, and returns
+Fugu-satisfied candidates to the client. It carries messages — it does **not** make
+decisions. All the thinking belongs to the actors.
 
 ```mermaid
 flowchart LR
@@ -42,32 +42,34 @@ flowchart LR
     F <-->|via run.mjs| W
 ```
 
-### How it develops: no sandbox
+### How it develops: isolated branches, real code
 
-Workers develop **straight into the real repository** — the actual `apps/`,
-`services/`, etc. There is no staging folder and no "build somewhere else, then
-move it in." You then test the real, live result (typecheck, Playwright against the
-running stack, `curl` against real endpoints). This mirrors how a real team ships:
-developers push to the real project, and the client tests the real project.
+Workers develop against the **real repository** in isolated task branches or
+worktrees — the actual `apps/`, `services/`, etc., not copied product code in an
+artifact folder. Each worker returns a PR-like change to Fugu. Fugu validates it,
+rejects it back to the worker when needed, and returns only satisfied candidates to
+the client. The client is still the final approver.
 
-The only things that ever land in the `agent-output/` folder are **plans, feedback,
-and raw dumps** — never product code.
+The only things that ever land in the `agent-output/` folder are **plans,
+feedback, telemetry, and raw dumps** — never product code.
 
 ### The loop
 
 ```mermaid
 flowchart TD
     A["Client optimizes the request"] --> B["Fugu plans sub-tasks"]
-    B --> C["Workers write real code / do checks"]
-    C --> D["Client runs the REAL QA"]
-    D -->|green| E["Client reviews & approves"]
-    D -->|red| F["Feedback back to Fugu"]
+    B --> C["Workers build task branches"]
+    C --> D["Fugu validates worker PRs"]
+    D -->|reject| C
+    D -->|satisfied| E["Client reviews candidate"]
+    E -->|approve| G["Integrate accepted work"]
+    E -->|reject| F["Feedback back to Fugu"]
     F --> B
 ```
 
 The loop is bounded (a `maxRounds` guard) so it can't run forever. On each failure
 the real test output is fed back to Fugu, which produces a **minimal fix plan**;
-workers fix it in place; the client tests again.
+workers update their isolated branches and Fugu validates again.
 
 ### Two kinds of sub-task
 
@@ -90,21 +92,31 @@ first. Sub‑tasks with no unmet dependency run **in parallel**.
 
 The wiring is just Fugu's hands: it executes that graph, running independent
 sub‑tasks concurrently up to `loop.concurrency`. When `container.enabled` is set,
-each build sub‑task runs in its **own ephemeral Docker container** (the repo is
-bind‑mounted so it writes real files; keys come from the mounted `.env`). This gives
-isolation and lets you scale the number of workers.
+Fugu orchestration runs in the runner container, and each build sub‑task runs in
+its **own ephemeral Docker container** (the repo is bind‑mounted so it writes real
+files; keys come from the mounted `.env`). This gives isolation and lets you scale
+the number of coordinations and workers.
 
 Docker is a prerequisite for that containerized worker mode. Install Docker
 Desktop on macOS/Windows or Docker Engine on Linux, then confirm `docker version`
 works from the shell where you run the pipeline. If Docker is unavailable, set
 `container.enabled: false` in `tools/agent-runner/pipeline.config.json` to run
-workers in process instead.
+orchestration and workers in process instead. You can also set
+`container.orchestrator: false` or `container.workers: false` for a split mode.
 
 Safety net: the wiring will never run two sub‑tasks that touch the **same file** at
 once, even if Fugu forgot to sequence them — but Fugu should chain file‑sharing work
 with `dependsOn`. Build the worker image once with
 `docker compose --profile agents build agent-worker` (the wiring also builds it on
 demand).
+
+### NPM releases are deliberate
+
+Accepted work and published packages are separate gates. Accepted work can collect
+on the integration branch. When it is time to publish, create or update
+`release/npm`, run package checks there (`npm pack`, install smoke test, metadata
+and version review), ask for client approval, then publish and tag from that
+release branch.
 
 ### What's configurable (so it ports to any repo)
 

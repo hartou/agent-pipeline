@@ -1,12 +1,15 @@
 ---
 name: agent-orchestrator-installer
-description: 'Install Agent Orchestrator mode and the agent-pipeline into another repository. Use when: bootstrap orchestrator agent mode, vendor agent-pipeline, install Fugu/DeepSeek/gpt-4o-mini workflow, create pipeline config, AGENTS.md, agent-context, agent-tasks, or agent-output.'
-argument-hint: '<target-repo-path> [--source <agent-pipeline-checkout>] [--force]'
+description: 'Install or upgrade Agent Orchestrator mode and the agent-pipeline in another repository. Use when: bootstrap orchestrator agent mode, vendor agent-pipeline, upgrade installed runner/templates, install Fugu/DeepSeek/gpt-4o-mini workflow, create pipeline config, AGENTS.md, agent-context, agent-tasks, or agent-output.'
+argument-hint: '<target-repo-path> [--source <agent-pipeline-checkout>] [--upgrade|--force]'
 ---
 
 # Agent Orchestrator Installer
 
 Use this skill when a user wants to install the Agent Orchestrator mode into a repo so the repo can run the multi-agent delivery pipeline: Client/Copilot -> Fugu orchestrator -> DeepSeek/gpt-4o-mini workers -> real QA.
+
+Use `--upgrade` for already-installed brownfield repos that need the latest runner,
+templates, and skill without losing their customized pipeline config.
 
 ## What This Installs
 
@@ -51,6 +54,24 @@ node .github/skills/agent-orchestrator-installer/scripts/install-agent-orchestra
 
 If installed as a standalone skill, omit `--source`; the script will try to fetch `hartou/agent-pipeline` using GitHub CLI auth.
 
+For an existing install, prefer the safe upgrade path:
+
+```sh
+npx @hartou/agent-pipeline init --target . --upgrade --skill
+```
+
+Or from a local checkout:
+
+```sh
+node /path/to/agent-pipeline/.github/skills/agent-orchestrator-installer/scripts/install-agent-orchestrator.mjs --target /path/to/repo --source /path/to/agent-pipeline --upgrade --skill
+```
+
+`--upgrade` refreshes `tools/agent-runner/`, the installer skill,
+`.github/agents/orchestrator.agent.md`, and
+`.github/instructions/agent-pipeline.instructions.md`. It preserves
+`tools/agent-runner/pipeline.config.json`, `AGENTS.md`, and
+`.github/copilot-instructions.md`.
+
 3. Edit `tools/agent-runner/pipeline.config.json` in the target repo:
    - Set `project`.
    - Set `paths` if the repo uses non-default task/artifact directories.
@@ -83,7 +104,8 @@ node tools/agent-runner/run.mjs run --task agent-tasks/smoke-test.md
 ## Important Rules
 
 - Do not print `.env` contents or secrets.
-- Do not overwrite an existing runner/config/agent unless the user explicitly chooses `--force`.
+- Do not overwrite repo-owned guidance. Use `--upgrade` for installed brownfield
+   repos; reserve `--force` for intentional replacement of generated config/templates.
 - Treat `AGENTS.md` as repo-owned. If it exists, leave it alone and ask whether to add orchestrator guidance.
 - Treat `.github/copilot-instructions.md` as repo-owned. The installer adds
    `.github/instructions/agent-pipeline.instructions.md` for pipeline guidance
@@ -98,6 +120,7 @@ node tools/agent-runner/run.mjs run --task agent-tasks/smoke-test.md
 --source <path>       Local agent-pipeline checkout/package to install from.
 --repo <owner/name>   GitHub repo to fetch when --source is omitted. Default: hartou/agent-pipeline.
 --ref <ref>           Branch or tag to fetch. Default: main.
+--upgrade             Refresh pipeline-owned runner, skill, and agent templates while preserving pipeline.config.json and repo-owned guidance.
 --force               Replace existing tools/agent-runner and force init templates.
 --skill               Install the Copilot skill. Default; accepted for explicit npm usage.
 --skip-skill          Do not install .github/skills/agent-orchestrator-installer.
