@@ -118,6 +118,11 @@ const TELEMETRY_COLUMNS = [
   'files_written', 'est_cost_usd', 'task_file', 'error',
 ];
 
+const AUTHORSHIP_COLUMNS = [
+  'ts_iso', 'engine_version', 'run_id', 'round', 'subtask_id', 'file_path',
+  'action', 'actor', 'role', 'provider', 'model',
+];
+
 function csvField(v) {
   const s = v === undefined || v === null ? '' : String(v);
   return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
@@ -148,6 +153,23 @@ async function logTelemetry(reg, row) {
   };
   telemetryChain = telemetryChain.then(write, write);
   return telemetryChain;
+}
+
+let authorshipChain = Promise.resolve();
+async function logFileAuthorship(reg, rows) {
+  const csvPath = process.env.PIPELINE_AUTHORSHIP_CSV || reg?.telemetry?.fileAuthors || 'agent-context/file-authorship.csv';
+  if (!csvPath || !rows.length) return undefined;
+  const write = async () => {
+    const abs = resolve(ROOT, csvPath);
+    await mkdir(dirname(abs), { recursive: true });
+    if (!existsSync(abs)) await writeFile(abs, AUTHORSHIP_COLUMNS.join(',') + '\n', 'utf8');
+    const ts = new Date().toISOString();
+    const version = engineVersion();
+    const lines = rows.map((row) => AUTHORSHIP_COLUMNS.map((c) => csvField({ ts_iso: ts, engine_version: version, ...row }[c])).join(','));
+    await appendFile(abs, lines.join('\n') + '\n', 'utf8');
+  };
+  authorshipChain = authorshipChain.then(write, write);
+  return authorshipChain;
 }
 
 async function chat(cfg, messages, maxTokens = 4000) {
@@ -285,9 +307,10 @@ async function writeRepoFiles(files) {
     }
     const abs = resolve(ROOT, f.path);
     if (!abs.startsWith(ROOT + '/')) throw new Error(`Refusing path outside repo: ${f.path}`);
+    const action = existsSync(abs) ? 'updated' : 'created';
     await mkdir(dirname(abs), { recursive: true });
     await writeFile(abs, f.content, 'utf8');
-    written.push(f.path);
+    written.push({ path: f.path, action });
   }
   return written;
 }
@@ -414,6 +437,17 @@ async function doBuildSubtask({ reg, env, sub, providerOverride, contextFiles, r
     result = 'no_file_blocks';
   } else {
     written = await writeRepoFiles(files);
+    await logFileAuthorship(reg, written.map((file) => ({
+      run_id: runId,
+      round,
+      subtask_id: sub.id,
+      file_path: file.path,
+      action: file.action,
+      actor: cfg.label,
+      role: cfg.role,
+      provider: cfg.provider,
+      model: cfg.model,
+    })));
   }
   await logTelemetry(reg, {
     run_id: runId, round, verb: 'build', actor: cfg.label, role: cfg.role,
@@ -427,7 +461,7 @@ async function doBuildSubtask({ reg, env, sub, providerOverride, contextFiles, r
   if (result === 'no_file_blocks') {
     process.stderr.write(`[build:${cfg.label}] ${sub.id} produced no file changes (raw output at ${dumpPath}).\n`);
   } else {
-    process.stderr.write(`[build:${cfg.label}] ${sub.id} wrote ${written.length} file(s): ${written.join(', ')}\n`);
+    process.stderr.write(`[build:${cfg.label}] ${sub.id} wrote ${written.length} file(s): ${written.map((f) => f.path).join(', ')}\n`);
   }
   return { written, result, dumpPath };
 }
@@ -682,10 +716,12 @@ function ensureImage(reg) {
 function makeContainerRunner({ reg, image, planRel, runId, round, artifacts }) {
   return (sub) => new Promise((resolveP) => {
     const shardRel = `${artifacts}/.telemetry/${safeName(runId)}__${safeName(sub.id)}.csv`;
+    const authorshipShardRel = `${artifacts}/.authorship/${safeName(runId)}__${safeName(sub.id)}.csv`;
     const args = [
       'run', '--rm',
       '-v', `${ROOT}:/repo`, '-w', '/repo',
       '-e', `PIPELINE_TELEMETRY_CSV=/repo/${shardRel}`,
+      '-e', `PIPELINE_AUTHORSHIP_CSV=/repo/${authorshipShardRel}`,
       image,
       'node', engineScriptRel(), 'build',
       '--plan', planRel, '--subtask', sub.id, '--run-id', runId, '--round', String(round),
@@ -712,12 +748,20 @@ function makeInProcessRunner({ reg, env, runId, round }) {
 // After a container batch, fold each per-sub-task telemetry shard into the main
 // CSV (single writer here, so no interleaving), then remove the shard dir.
 async function mergeTelemetryShards(reg, shardDir) {
+  await mergeCsvShards(reg.telemetry.csv, TELEMETRY_COLUMNS, shardDir);
+}
+
+async function mergeAuthorshipShards(reg, shardDir) {
+  await mergeCsvShards(reg.telemetry?.fileAuthors || 'agent-context/file-authorship.csv', AUTHORSHIP_COLUMNS, shardDir);
+}
+
+async function mergeCsvShards(csvPath, columns, shardDir) {
   const dirAbs = resolve(ROOT, shardDir);
   if (!existsSync(dirAbs)) return;
-  const mainAbs = resolve(ROOT, reg.telemetry.csv);
+  const mainAbs = resolve(ROOT, csvPath);
   await mkdir(dirname(mainAbs), { recursive: true });
-  if (!existsSync(mainAbs)) await writeFile(mainAbs, TELEMETRY_COLUMNS.join(',') + '\n', 'utf8');
-  const header = TELEMETRY_COLUMNS.join(',');
+  if (!existsSync(mainAbs)) await writeFile(mainAbs, columns.join(',') + '\n', 'utf8');
+  const header = columns.join(',');
   for (const f of (await readdir(dirAbs)).filter((x) => x.endsWith('.csv'))) {
     const lines = (await readFile(join(dirAbs, f), 'utf8')).split('\n').filter((l) => l.length);
     const rows = lines[0] === header ? lines.slice(1) : lines;
@@ -772,7 +816,10 @@ async function doRun({ reg, env, task, taskFile }) {
     const parallel = analyzeParallelism(buildable);
     process.stderr.write(`[run ${runId}] executing ${buildable.length} build sub-task(s) at concurrency ${concurrency}${useContainers ? ' (containers)' : ' (in-process)'}; initially-ready=${parallel.initiallyReady}, dependency-edges=${parallel.dependencyEdges}, file-overlap-pairs=${parallel.fileOverlapPairs}.\n`);
     const graphResults = await runGraph(buildable, concurrency, runOne);
-    if (useContainers) await mergeTelemetryShards(reg, join(artifacts, '.telemetry'));
+    if (useContainers) {
+      await mergeTelemetryShards(reg, join(artifacts, '.telemetry'));
+      await mergeAuthorshipShards(reg, join(artifacts, '.authorship'));
+    }
     const buildIssues = graphResults
       .filter((g) => g.r.exitCode !== 0)
       .map((g) => ({ sub: g.sub, res: { result: g.r.blocked ? 'blocked' : 'build_failed', dumpPath: g.r.dumpPath || join(artifacts, `${g.sub.id}.raw.txt`) } }));

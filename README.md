@@ -266,6 +266,10 @@ OPENAI_API_KEY=
   `ts_iso, engine_version, run_id, round, verb, actor, role, provider, model,
   prompt_tokens, completion_tokens, total_tokens, latency_ms, http_status,
   result, qa_passed, qa_failed, files_written, est_cost_usd, task_file, error`.
+- **`file-authorship.csv`** (auto) — one machine-written row per worker-written
+  file: path, created/updated action, subtask id, actor key, provider, model, and
+  engine version. This keeps agent authorship in metadata instead of injecting
+  comments into product files.
 - **`model-worker-performance.csv`** (curated) — the hand-owned acceptance ledger.
   `report` only *drafts* a row; you annotate and keep it.
 
@@ -279,11 +283,11 @@ Use telemetry after real runs like this:
 node tools/agent-runner/run.mjs report
 ```
 
-Keep `agent-context/telemetry.csv` as the raw machine log and annotate
-`agent-context/model-worker-performance.csv` with human judgment: which worker was
-best for which task shape, what failed, what prompt/config adjustment helped, and
-whether QA passed. Do not paste secrets, raw `.env` contents, or sensitive customer
-data into the curated ledger.
+Keep `agent-context/telemetry.csv` and `agent-context/file-authorship.csv` as raw
+machine logs, then annotate `agent-context/model-worker-performance.csv` with
+human judgment: which worker was best for which task shape, what failed, what
+prompt/config adjustment helped, and whether QA passed. Do not paste secrets, raw
+`.env` contents, or sensitive customer data into the curated ledger.
 
 ## Contributing back from installed repos
 

@@ -87,6 +87,7 @@
       "additionalProperties": false,
       "properties": {
         "csv": { "type": "string", "description": "Tier-1 auto-appended machine telemetry." },
+        "fileAuthors": { "type": "string", "description": "Per-file worker authorship ledger for generated or updated files." },
         "curatedCsv": { "type": "string", "description": "Tier-2 hand-curated acceptance ledger; engine only drafts rows." }
       }
     },

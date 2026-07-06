@@ -166,6 +166,10 @@ Create provider keys from the provider dashboards, then store the values locally
 - **`telemetry.csv`** (automatic) — one row per model call: tokens, latency, HTTP
   status, estimated cost, files written, stamped with the engine version. Written
   by the wiring on every call.
+- **`file-authorship.csv`** (automatic) — one row per worker-written file: path,
+  created/updated action, subtask id, actor key, provider, model, and engine
+  version. This tracks which agent produced each file without adding comments to
+  product code.
 - **`model-worker-performance.csv`** (curated) — the hand‑owned acceptance ledger
   with human judgment (what worked, what to adjust). The pipeline only *drafts* a
   row for you to annotate; it never overwrites your history.

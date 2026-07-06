@@ -96,6 +96,7 @@
   },
   "telemetry": {
     "csv": "agent-context/telemetry.csv",
+    "fileAuthors": "agent-context/file-authorship.csv",
     "curatedCsv": "agent-context/model-worker-performance.csv"
   }
 }
