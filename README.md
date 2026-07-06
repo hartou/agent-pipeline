@@ -66,6 +66,25 @@ Set `container.enabled: false` to fall back to in-process execution (still
 parallel, governed by `loop.concurrency`). Set `container.orchestrator: false` or
 `container.workers: false` to opt only one side out of containers.
 
+When a run appears serial, check the runner's graph line before blaming Docker:
+it prints the configured concurrency, how many build sub-tasks are initially
+ready, how many dependency edges Fugu planned, and how many file-overlap pairs the
+safety lock found. If `initially-ready=1` or most tasks share files, the plan is
+serial even though container mode is enabled.
+
+## Worker model evaluation
+
+The default scaffold includes three worker profiles: DeepSeek for broad first
+drafts, gpt-4o-mini for scoped local edits/reviews, and `glm-5.2` as a fast senior
+coder plus implementation-QA candidate. The orchestrator sees each worker's
+`bestFor` hints and should assign GLM to file-disjoint implementation or review
+slices while telemetry records latency, token use, file output, and QA outcome.
+
+For Z.AI-compatible GLM endpoints, keep secrets in `.env` and reference only env
+var names in config. The scaffold uses `ZAI_API_KEY` / `ZAI_MODEL`, with fallbacks
+for dotted names such as `Z.AI_API_Key`, `Z.AI_API_Secret`, `Z.AI_BASE_URL`, and
+the generic `MODEL` variable.
+
 ## Branch/worktree acceptance flow
 
 The intended product workflow is branch-based, not shared-checkout editing:

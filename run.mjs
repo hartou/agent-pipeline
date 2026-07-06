@@ -47,7 +47,9 @@ function engineVersion() {
 function parseEnvFile(text) {
   const env = {};
   for (const line of text.split('\n')) {
-    const m = line.match(/^([A-Za-z0-9_]+)=(.*)$/);
+    const source = line.trim().replace(/^export\s+/, '');
+    if (!source || source.startsWith('#')) continue;
+    const m = source.match(/^([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*(.*)$/);
     if (!m) continue;
     let v = m[2].trim();
     if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
@@ -90,14 +92,17 @@ function resolveActor(nameOrProvider, reg, env) {
     a = Object.values(actors).find((x) => x.provider === want);
   }
   if (!a) throw new Error(`Unknown actor/provider: ${nameOrProvider}`);
-  const model = a.modelEnv && env[a.modelEnv] ? env[a.modelEnv] : a.model;
+  const modelEnv = [a.modelEnv, ...(a.modelEnvAlternates || [])].find((name) => name && env[name]);
+  const apiKeyEnv = [a.apiKeyEnv, ...(a.apiKeyEnvAlternates || [])].find((name) => name && env[name]) || a.apiKeyEnv;
+  const baseUrl = a.baseUrlEnv && env[a.baseUrlEnv] ? env[a.baseUrlEnv] : a.baseUrl;
+  const model = modelEnv ? env[modelEnv] : a.model;
   return {
     label: a.key,
     role: a.role,
     provider: a.provider,
-    baseUrl: a.baseUrl,
-    apiKeyEnv: a.apiKeyEnv,
-    apiKey: a.apiKeyEnv ? env[a.apiKeyEnv] : undefined,
+    baseUrl,
+    apiKeyEnv,
+    apiKey: apiKeyEnv ? env[apiKeyEnv] : undefined,
     model,
     extra: a.params || {},
     maxTokens: a.maxTokens || 4000,
@@ -218,6 +223,10 @@ Read the customer request and the given task spec, then decompose the work into
 bounded worker sub-tasks. Assign each sub-task to the best-fit worker:
 ${workerRoster(reg)}
 Respect the task's stated scope and out-of-scope. Do NOT invent files or APIs.
+Optimize for wall-clock speed: split independent, file-disjoint work into separate
+sub-tasks and leave their "dependsOn" arrays empty. Do NOT add dependencies for
+preference, review order, or convenience; add them only when a later task truly
+needs output from an earlier task or when two tasks edit the same file.
 Tag each sub-task with a "kind":
 - "build": the worker writes/edits code files (this is the default for
   implementation work).
@@ -581,8 +590,10 @@ async function doDoctor({ reg, env }) {
   if (errs.length === 0) line('✓', 'config schema');
   else { errs.forEach((e) => line('✗', e)); ok = false; }
   for (const a of Object.values(allActors(reg))) {
-    if (a.apiKeyEnv && env[a.apiKeyEnv]) line('✓', `${a.key}: key ${a.apiKeyEnv} present`);
-    else { line('✗', `${a.key}: missing ${a.apiKeyEnv} in .env`); ok = false; }
+    const cfg = resolveActor(a.key, reg, env);
+    const keyNames = [a.apiKeyEnv, ...(a.apiKeyEnvAlternates || [])].filter(Boolean).join(' or ');
+    if (cfg.apiKey) line('✓', `${a.key}: key ${cfg.apiKeyEnv} present`);
+    else { line('✗', `${a.key}: missing ${keyNames} in .env`); ok = false; }
   }
   const names = new Set((reg.qa?.commands || []).map((c) => c.name));
   for (const n of reg.qa?.order || []) {
@@ -617,13 +628,18 @@ async function runGraph(subtasks, concurrency, runOne) {
 
   while (remaining.size > 0 || running.size > 0) {
     if (running.size < concurrency) {
+      const started = [];
       for (const id of [...remaining]) {
         if (running.size >= concurrency) break;
         const s = byId.get(id);
         if (!depsReady(s) || clashes(s)) continue;
         filesOf(s).forEach((f) => lockedFiles.add(f));
         remaining.delete(id);
+        started.push(id);
         running.set(id, (async () => ({ id, sub: s, r: await runOne(s) }))());
+      }
+      if (started.length) {
+        process.stderr.write(`[graph] starting ${started.length}/${concurrency}: ${started.join(', ')}\n`);
       }
     }
     if (running.size === 0) {
@@ -638,6 +654,20 @@ async function runGraph(subtasks, concurrency, runOne) {
     results.push({ sub, r });
   }
   return results;
+}
+
+function analyzeParallelism(subtasks) {
+  const dependencyEdges = subtasks.reduce((n, s) => n + (s.dependsOn || []).length, 0);
+  const initiallyReady = subtasks.filter((s) => !(s.dependsOn || []).length).length;
+  let fileOverlapPairs = 0;
+  for (let i = 0; i < subtasks.length; i += 1) {
+    const left = new Set(subtasks[i].files || []);
+    if (left.size === 0) continue;
+    for (let j = i + 1; j < subtasks.length; j += 1) {
+      if ((subtasks[j].files || []).some((f) => left.has(f))) fileOverlapPairs += 1;
+    }
+  }
+  return { dependencyEdges, initiallyReady, fileOverlapPairs };
 }
 
 function ensureImage(reg) {
@@ -739,7 +769,8 @@ async function doRun({ reg, env, task, taskFile }) {
     } else {
       runOne = makeInProcessRunner({ reg, env, runId, round });
     }
-    process.stderr.write(`[run ${runId}] executing ${buildable.length} build sub-task(s) at concurrency ${concurrency}${useContainers ? ' (containers)' : ' (in-process)'}...\n`);
+    const parallel = analyzeParallelism(buildable);
+    process.stderr.write(`[run ${runId}] executing ${buildable.length} build sub-task(s) at concurrency ${concurrency}${useContainers ? ' (containers)' : ' (in-process)'}; initially-ready=${parallel.initiallyReady}, dependency-edges=${parallel.dependencyEdges}, file-overlap-pairs=${parallel.fileOverlapPairs}.\n`);
     const graphResults = await runGraph(buildable, concurrency, runOne);
     if (useContainers) await mergeTelemetryShards(reg, join(artifacts, '.telemetry'));
     const buildIssues = graphResults

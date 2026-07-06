@@ -110,6 +110,27 @@ with `dependsOn`. Build the worker image once with
 `docker compose --profile agents build agent-worker` (the wiring also builds it on
 demand).
 
+If you see only one worker container at a time, inspect the run's graph summary:
+`initially-ready` tells you how many build sub‑tasks can start immediately,
+`dependency-edges` shows how much sequencing Fugu planned, and
+`file-overlap-pairs` shows where the wiring's file lock will serialize work for
+safety. A healthy parallel plan usually has multiple initially-ready, file-disjoint
+build tasks.
+
+### Evaluating GLM as a faster worker
+
+The template includes `glm-5.2` as a worker candidate for fast senior coding and
+implementation QA. Start by letting Fugu choose it for independent, file-disjoint
+slices; compare its telemetry rows against DeepSeek and gpt-4o-mini for latency,
+files written, and whether client QA went green. Promote it to the default broad
+coder only after it repeatedly lands multi-file changes with fewer feedback loops
+than DeepSeek.
+
+Recommended initial role: **fast senior coder / implementation-QA worker**, not
+orchestrator. That gives the pipeline speed where the expensive calls happen while
+keeping Fugu responsible for dependency graphs until GLM has enough plan-quality
+evidence.
+
 ### NPM releases are deliberate
 
 Accepted work and published packages are separate gates. Accepted work can collect
