@@ -3,7 +3,7 @@
 - Branch: `pipeline-glm-eval-and-parallel-diagnostics`.
 - Active focus: GLM/DeepSeek worker evaluation, parallel diagnostics, file authorship, and publication draft context.
 - Latest source package validation: `npm pack --dry-run` passed after authorship tracking.
-- Release branch rule: do not carry `agent-context/`, `agent-output/`, `agent-tasks/`, or `publication/` into `release/npm` unless the user explicitly requests release documentation.
+- Release branch rule: do not carry `dev-agent-context/`, `dev-agent-output/`, `dev-agent-tasks/`, or `dev-publication/` into `release/npm` unless the user explicitly requests release documentation.
 
 ## Recent Decisions
 

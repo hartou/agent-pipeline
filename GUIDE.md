@@ -50,7 +50,7 @@ artifact folder. Each worker returns a PR-like change to Fugu. Fugu validates it
 rejects it back to the worker when needed, and returns only satisfied candidates to
 the client. The client is still the final approver.
 
-The only things that ever land in the `agent-output/` folder are **plans,
+The only things that ever land in the `dev-agent-output/` folder are **plans,
 feedback, telemetry, and raw dumps** — never product code.
 
 ### The loop
@@ -139,10 +139,10 @@ on the integration branch. When it is time to publish, create or update
 and version review), ask for client approval, then publish and tag from that
 release branch.
 
-Keep development memory out of that branch. `agent-context/`, `agent-output/`,
-`agent-tasks/`, and `publication/` are useful while building and evaluating, but
-they should not be part of the npm release branch unless explicitly approved as
-release documentation.
+Keep development memory out of that branch. In this source repo, development-only
+folders use a `dev-` prefix, such as `dev-agent-context/` and `dev-publication/`.
+They are useful while building and evaluating, but should not be part of the npm
+release branch unless explicitly approved as release documentation.
 
 ### What's configurable (so it ports to any repo)
 

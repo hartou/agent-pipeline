@@ -3,9 +3,9 @@
   "version": 1,
   "project": "your-project",
   "paths": {
-    "request": "agent-tasks/customer-request.md",
-    "tasks": "agent-tasks",
-    "artifacts": "agent-output"
+    "request": "dev-agent-tasks/customer-request.md",
+    "tasks": "dev-agent-tasks",
+    "artifacts": "dev-agent-output"
   },
   "actors": {
     "client": {
@@ -95,8 +95,8 @@
     "dockerfile": "tools/agent-runner/Dockerfile"
   },
   "telemetry": {
-    "csv": "agent-context/telemetry.csv",
-    "fileAuthors": "agent-context/file-authorship.csv",
-    "curatedCsv": "agent-context/model-worker-performance.csv"
+    "csv": "dev-agent-context/telemetry.csv",
+    "fileAuthors": "dev-agent-context/file-authorship.csv",
+    "curatedCsv": "dev-agent-context/model-worker-performance.csv"
   }
 }

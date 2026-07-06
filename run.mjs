@@ -157,7 +157,7 @@ async function logTelemetry(reg, row) {
 
 let authorshipChain = Promise.resolve();
 async function logFileAuthorship(reg, rows) {
-  const csvPath = process.env.PIPELINE_AUTHORSHIP_CSV || reg?.telemetry?.fileAuthors || 'agent-context/file-authorship.csv';
+  const csvPath = process.env.PIPELINE_AUTHORSHIP_CSV || reg?.telemetry?.fileAuthors || 'dev-agent-context/file-authorship.csv';
   if (!csvPath || !rows.length) return undefined;
   const write = async () => {
     const abs = resolve(ROOT, csvPath);
@@ -378,7 +378,7 @@ function spawnCapture(command, args) {
 
 async function doOrchestrateInContainer({ reg, task, feedback, runId, round }) {
   ensureImage(reg);
-  const artifacts = reg.paths?.artifacts || 'agent-output';
+  const artifacts = reg.paths?.artifacts || 'dev-agent-output';
   const inputRel = join(artifacts, '.orchestrator', `${safeName(runId)}-r${round}.json`);
   await mkdir(dirname(resolve(ROOT, inputRel)), { recursive: true });
   await writeFile(resolve(ROOT, inputRel), JSON.stringify({ task, feedback, runId, round }), 'utf8');
@@ -431,7 +431,7 @@ async function doBuildSubtask({ reg, env, sub, providerOverride, contextFiles, r
   let written = [];
   let dumpPath;
   if (files.length === 0) {
-    dumpPath = join(reg.paths?.artifacts || 'agent-output', `${sub.id}.raw.txt`);
+    dumpPath = join(reg.paths?.artifacts || 'dev-agent-output', `${sub.id}.raw.txt`);
     await mkdir(dirname(resolve(ROOT, dumpPath)), { recursive: true });
     await writeFile(resolve(ROOT, dumpPath), out.content, 'utf8');
     result = 'no_file_blocks';
@@ -752,7 +752,7 @@ async function mergeTelemetryShards(reg, shardDir) {
 }
 
 async function mergeAuthorshipShards(reg, shardDir) {
-  await mergeCsvShards(reg.telemetry?.fileAuthors || 'agent-context/file-authorship.csv', AUTHORSHIP_COLUMNS, shardDir);
+  await mergeCsvShards(reg.telemetry?.fileAuthors || 'dev-agent-context/file-authorship.csv', AUTHORSHIP_COLUMNS, shardDir);
 }
 
 async function mergeCsvShards(csvPath, columns, shardDir) {
@@ -774,7 +774,7 @@ async function mergeCsvShards(csvPath, columns, shardDir) {
 
 async function doRun({ reg, env, task, taskFile }) {
   const runId = `run-${new Date().toISOString().replace(/[:.]/g, '-')}`;
-  const artifacts = reg.paths?.artifacts || 'agent-output';
+  const artifacts = reg.paths?.artifacts || 'dev-agent-output';
   const base = basename(taskFile, '.md');
   const maxRounds = reg.loop?.maxRounds || 1;
   let feedback = '';
@@ -885,7 +885,7 @@ async function main() {
       ? await readFile(resolve(ROOT, args.feedback), 'utf8')
       : '';
     const content = await doOrchestrate({ reg, env, task, feedback, runId: `plan-${Date.now()}`, round: 0 });
-    const out = args.out || join(reg.paths?.artifacts || 'agent-output', `${basename(args.task, '.md')}.plan.json`);
+    const out = args.out || join(reg.paths?.artifacts || 'dev-agent-output', `${basename(args.task, '.md')}.plan.json`);
     await mkdir(dirname(resolve(ROOT, out)), { recursive: true });
     await writeFile(resolve(ROOT, out), content, 'utf8');
     process.stderr.write(`[plan] wrote ${out}\n`);
@@ -958,7 +958,7 @@ async function main() {
     ];
     process.stderr.write(`[worker:${cfg.label}] calling ${cfg.model}...\n`);
     const out = await chat(cfg, messages, cfg.maxTokens);
-    const dest = args.out || join(reg.paths?.artifacts || 'agent-output', `${basename(args.task, '.md')}.${args.provider}.md`);
+    const dest = args.out || join(reg.paths?.artifacts || 'dev-agent-output', `${basename(args.task, '.md')}.${args.provider}.md`);
     await mkdir(dirname(resolve(ROOT, dest)), { recursive: true });
     await writeFile(resolve(ROOT, dest), out.content, 'utf8');
     process.stderr.write(`[worker:${cfg.label}] wrote ${dest}\n`);

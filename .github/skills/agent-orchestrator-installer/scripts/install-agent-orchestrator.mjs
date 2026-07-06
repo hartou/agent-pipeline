@@ -192,58 +192,58 @@ async function refreshPipelineOwnedTemplates({ sourceRoot, targetRoot }) {
 }
 
 async function scaffoldRepoFiles({ targetRoot, skipAgentsMd }) {
-  await mkdir(join(targetRoot, 'agent-context'), { recursive: true });
-  await mkdir(join(targetRoot, 'agent-context', 'platform-map'), { recursive: true });
-  await mkdir(join(targetRoot, 'agent-tasks'), { recursive: true });
-  await mkdir(join(targetRoot, 'agent-output'), { recursive: true });
+  await mkdir(join(targetRoot, 'dev-agent-context'), { recursive: true });
+  await mkdir(join(targetRoot, 'dev-agent-context', 'platform-map'), { recursive: true });
+  await mkdir(join(targetRoot, 'dev-agent-tasks'), { recursive: true });
+  await mkdir(join(targetRoot, 'dev-agent-output'), { recursive: true });
 
   await writeIfMissing(
-    join(targetRoot, 'agent-context', 'context-index.md'),
-    '# Context Index\n\nRead these files before substantial agent-pipeline work:\n\n- `repo-file-boundaries.md` — which files ship/run Agent Pipeline versus which files are development context.\n- `current-state.md` — current branch, run state, and active goal.\n- `next-tasks.md` — bounded tasks ready for orchestration.\n- `architecture-decisions.md` — repo rules and constraints workers must follow.\n- `model-worker-guardrails.md` — model roles, strengths, and known failure modes.\n- `model-worker-performance.csv` — curated model performance ledger.\n- `mvp-tracker.md` — MVP scope, status, and acceptance.\n- `new-conversation-handoff.md` — concise handoff for the next session.\n- `review-checklist.md` — reviewer checklist before accepting worker output.\n- `self-registration-mvp-handoff.md` — optional handoff for self-registration/MVP work.\n- `platform-map/` — repo-specific platform and integration notes.\n\nThese files are development context. Keep them off release branches such as `release/npm` unless explicitly needed for release notes.\n',
+    join(targetRoot, 'dev-agent-context', 'context-index.md'),
+    '# Context Index\n\nRead these files before substantial agent-pipeline work:\n\n- `repo-file-boundaries.md` — which files ship/run Agent Pipeline versus which files are development context.\n- `current-state.md` — current branch, run state, and active goal.\n- `next-tasks.md` — bounded tasks ready for orchestration.\n- `architecture-decisions.md` — repo rules and constraints workers must follow.\n- `model-worker-guardrails.md` — model roles, strengths, and known failure modes.\n- `model-worker-performance.csv` — curated model performance ledger.\n- `mvp-tracker.md` — MVP scope, status, and acceptance.\n- `new-conversation-handoff.md` — concise handoff for the next session.\n- `review-checklist.md` — reviewer checklist before accepting worker output.\n- `self-registration-mvp-handoff.md` — optional handoff for self-registration/MVP work.\n- `platform-map/` — repo-specific platform and integration notes.\n\nThis `dev-agent-context/` folder is development context. Keep it off release branches such as `release/npm` unless explicitly needed for release notes.\n',
   );
   await writeIfMissing(
-    join(targetRoot, 'agent-context', 'repo-file-boundaries.md'),
-    '# Repo File Boundaries\n\nThis repo has two different classes of files. Keep the distinction explicit before release work.\n\n## Required To Ship And Run Agent Pipeline\n\n- `tools/agent-runner/` — vendored runner, schema, templates, docs, and Dockerfile.\n- `.github/skills/agent-orchestrator-installer/` — reusable installer skill when installed.\n- `.github/agents/orchestrator.agent.md` and `.github/instructions/agent-pipeline.instructions.md` — Copilot/Orchestrator guidance.\n- `AGENTS.md` and `.github/copilot-instructions.md` when this repo chooses to keep generated guidance.\n- `.env.agent-pipeline.example` — env var names only, never real keys.\n\n## Required To Develop This Repo\n\n- `agent-context/` — development memory, handoffs, model guardrails, and curated performance context.\n- `agent-tasks/` — local task specs for active pipeline runs.\n- `agent-output/` — generated plans, feedback, telemetry shards, and raw dumps.\n\n## Release Rule\n\nDo not merge ordinary development context into `release/npm` unless the user explicitly requests public-facing release documentation.\n',
+    join(targetRoot, 'dev-agent-context', 'repo-file-boundaries.md'),
+    '# Repo File Boundaries\n\nThis repo has two different classes of files. Keep the distinction explicit before release work.\n\n## Required To Ship And Run Agent Pipeline\n\n- `tools/agent-runner/` — vendored runner, schema, templates, docs, and Dockerfile.\n- `.github/skills/agent-orchestrator-installer/` — reusable installer skill when installed.\n- `.github/agents/orchestrator.agent.md` and `.github/instructions/agent-pipeline.instructions.md` — Copilot/Orchestrator guidance.\n- `AGENTS.md` and `.github/copilot-instructions.md` when this repo chooses to keep generated guidance.\n- `.env.agent-pipeline.example` — env var names only, never real keys.\n\n## Required To Develop This Repo\n\n- `dev-agent-context/` — development memory, handoffs, model guardrails, and curated performance context.\n- `dev-agent-tasks/` — local task specs for active pipeline runs.\n- `dev-agent-output/` — generated plans, feedback, telemetry shards, and raw dumps.\n\nThe `dev-` prefix is intentional: it makes development artifacts visually distinct from files that ship or run Agent Pipeline.\n\n## Release Rule\n\nDo not merge `dev-*` development context into `release/npm` unless the user explicitly requests public-facing release documentation.\n',
   );
 
   await writeIfMissing(
-    join(targetRoot, 'agent-context', 'current-state.md'),
-    '# Current State\n\n- Agent Orchestrator mode is installed. Update this file with branch, run state, current goal, blockers, and validation before major pipeline runs.\n\n## Release Hygiene\n\nDevelopment context belongs on active development branches. Do not carry `agent-context/`, `agent-output/`, or `agent-tasks/` into `release/npm` unless the user explicitly requests release documentation.\n',
+    join(targetRoot, 'dev-agent-context', 'current-state.md'),
+    '# Current State\n\n- Agent Orchestrator mode is installed. Update this file with branch, run state, current goal, blockers, and validation before major pipeline runs.\n\n## Release Hygiene\n\nDevelopment context belongs on active development branches. Do not carry `dev-agent-context/`, `dev-agent-output/`, or `dev-agent-tasks/` into `release/npm` unless the user explicitly requests release documentation.\n',
   );
   await writeIfMissing(
-    join(targetRoot, 'agent-context', 'next-tasks.md'),
+    join(targetRoot, 'dev-agent-context', 'next-tasks.md'),
     '# Next Tasks\n\nList bounded tasks suitable for the orchestrator pipeline.\n',
   );
   await writeIfMissing(
-    join(targetRoot, 'agent-context', 'architecture-decisions.md'),
+    join(targetRoot, 'dev-agent-context', 'architecture-decisions.md'),
     '# Architecture Decisions\n\nRecord repo architecture rules and constraints that workers must follow.\n',
   );
   await writeIfMissing(
-    join(targetRoot, 'agent-context', 'review-checklist.md'),
+    join(targetRoot, 'dev-agent-context', 'review-checklist.md'),
     '# Review Checklist\n\n- [ ] Secrets are not printed or committed.\n- [ ] Changes follow existing repo patterns.\n- [ ] Configured QA commands pass.\n',
   );
   await writeIfMissing(
-    join(targetRoot, 'agent-context', 'new-conversation-handoff.md'),
-    '# New Conversation Handoff\n\nUse this file to resume the next Copilot or Orchestrator session without replaying the whole chat. Update it after each accepted pipeline run or before ending a long conversation.\n\n## Role Split\n\nCopilot acts as Client/QA and final approver, Fugu plans and validates worker PR-like changes, workers implement in isolated task branches/worktrees, and `tools/agent-runner/run.mjs` is wiring only. NPM publishing is staged separately on `release/npm`.\n\n## Latest User Request\n\n- Pending: replace this with the most recent accepted request or goal.\n\n## Current State\n\n- Branch/status:\n- Important decisions:\n- Files changed or generated:\n- Validation run:\n\n## Next Conversation Prompt\n\nStart the next session with this concise instruction:\n\n```text\nContinue from `agent-context/new-conversation-handoff.md`. Confirm current git status, read `AGENTS.md` plus the relevant `agent-context/` files, then proceed with the next task.\n```\n',
+    join(targetRoot, 'dev-agent-context', 'new-conversation-handoff.md'),
+    '# New Conversation Handoff\n\nUse this file to resume the next Copilot or Orchestrator session without replaying the whole chat. Update it after each accepted pipeline run or before ending a long conversation.\n\n## Role Split\n\nCopilot acts as Client/QA and final approver, Fugu plans and validates worker PR-like changes, workers implement in isolated task branches/worktrees, and `tools/agent-runner/run.mjs` is wiring only. NPM publishing is staged separately on `release/npm`.\n\n## Latest User Request\n\n- Pending: replace this with the most recent accepted request or goal.\n\n## Current State\n\n- Branch/status:\n- Important decisions:\n- Files changed or generated:\n- Validation run:\n\n## Next Conversation Prompt\n\nStart the next session with this concise instruction:\n\n```text\nContinue from `dev-agent-context/new-conversation-handoff.md`. Confirm current git status, read `AGENTS.md` plus the relevant `dev-agent-context/` files, then proceed with the next task.\n```\n',
   );
   await writeIfMissing(
-    join(targetRoot, 'agent-context', 'model-worker-guardrails.md'),
+    join(targetRoot, 'dev-agent-context', 'model-worker-guardrails.md'),
     '# Model Worker Guardrails\n\nTrack model roles, strengths, failure modes, and prompt/config adjustments here. Update after benchmark or production runs.\n\n## Current Role Split\n\n- Fugu: orchestration, dependency graph, worker assignment, validation.\n- DeepSeek: broad implementation candidate; compare speed and QA outcomes before promotion.\n- gpt-4o-mini: scoped local edits and lightweight review work.\n- GLM: evaluation candidate for senior coding or implementation QA; require repeated telemetry before promotion.\n\n## Evaluation Rules\n\n- Compare models on the same task shape, files, max token budget, QA command, and telemetry fields.\n- Prefer streaming-aware metrics: time to first token, generation duration, output tokens/sec, and end-to-end latency.\n- Record model decisions in `model-worker-performance.csv`.\n',
   );
   await writeIfMissing(
-    join(targetRoot, 'agent-context', 'mvp-tracker.md'),
+    join(targetRoot, 'dev-agent-context', 'mvp-tracker.md'),
     '# MVP Tracker\n\n## Goal\n\n- Define the active MVP or release candidate here.\n\n## In Scope\n\n- Pending.\n\n## Out of Scope\n\n- Pending.\n\n## Acceptance\n\n- [ ] QA commands pass.\n- [ ] Client approves the candidate.\n- [ ] Release/npm work is staged separately from development context.\n',
   );
   await writeIfMissing(
-    join(targetRoot, 'agent-context', 'self-registration-mvp-handoff.md'),
+    join(targetRoot, 'dev-agent-context', 'self-registration-mvp-handoff.md'),
     '# Self-Registration MVP Handoff\n\nUse this optional handoff when the current repo has self-registration or onboarding MVP work. If it is not relevant, leave this file as a placeholder and use `new-conversation-handoff.md` for general continuation.\n',
   );
   await writeIfMissing(
-    join(targetRoot, 'agent-context', 'platform-map', 'README.md'),
+    join(targetRoot, 'dev-agent-context', 'platform-map', 'README.md'),
     '# Platform Map\n\nRecord repo-specific platform boundaries, services, external APIs, deployment surfaces, and ownership notes here. Keep secrets out of this directory.\n',
   );
   await writeIfMissing(
-    join(targetRoot, 'agent-context', 'model-worker-performance.csv'),
+    join(targetRoot, 'dev-agent-context', 'model-worker-performance.csv'),
     'date,priority,batch,job,provider,model,verb,task_file,result,qa_decision,integration_decision,files_changed,validation,what_worked,what_failed,prompt_adjustment,next_use\n',
   );
   await writeIfMissing(
@@ -252,13 +252,13 @@ async function scaffoldRepoFiles({ targetRoot, skipAgentsMd }) {
   );
   await writeIfMissing(
     join(targetRoot, '.github', 'copilot-instructions.md'),
-    '# Copilot Instructions\n\nBefore making agent-pipeline changes in this repo, read:\n\n- `.github/instructions/agent-pipeline.instructions.md`\n- `AGENTS.md`\n- `agent-context/context-index.md`\n- Every relevant file referenced by `agent-context/context-index.md`\n\nUse Orchestrator mode for implementation work: Copilot handles intake, QA, and final approval; Fugu plans and validates worker PR-like changes; workers implement in isolated task branches/worktrees; and `tools/agent-runner/run.mjs` stays wiring only. Stage NPM publishing on `release/npm`, not ordinary implementation branches. Treat `agent-context/`, `agent-output/`, `agent-tasks/`, and `publication/` as development context; do not carry them into `release/npm` unless explicitly requested.\n',
+    '# Copilot Instructions\n\nBefore making agent-pipeline changes in this repo, read:\n\n- `.github/instructions/agent-pipeline.instructions.md`\n- `AGENTS.md`\n- `dev-agent-context/context-index.md`\n- Every relevant file referenced by `dev-agent-context/context-index.md`\n\nUse Orchestrator mode for implementation work: Copilot handles intake, QA, and final approval; Fugu plans and validates worker PR-like changes; workers implement in isolated task branches/worktrees; and `tools/agent-runner/run.mjs` stays wiring only. Stage NPM publishing on `release/npm`, not ordinary implementation branches. Treat `dev-agent-context/`, `dev-agent-output/`, `dev-agent-tasks/`, and `dev-publication/` as development context; do not carry them into `release/npm` unless explicitly requested.\n',
   );
 
   if (!skipAgentsMd) {
     await writeIfMissing(
       join(targetRoot, 'AGENTS.md'),
-      '# Agent Guide\n\n## Architecture Rules\n\n- Add this repo\'s architecture boundaries, package manager, framework versions, and security rules.\n- Never store or print API keys or other secrets.\n\n## Agent Orchestrator Mode\n\n- Copilot acts as Client/QA and final approver.\n- Fugu plans bounded subtasks and validates worker PR-like changes.\n- Workers write product code in isolated task branches/worktrees.\n- `tools/agent-runner/run.mjs` is wiring only and makes no product decisions.\n- Stage NPM publishing on `release/npm` and publish only after explicit approval.\n\n## Useful Commands\n\n```sh\nnode tools/agent-runner/run.mjs doctor\nnode tools/agent-runner/run.mjs run --task agent-tasks/<task>.md\n```\n',
+      '# Agent Guide\n\n## Architecture Rules\n\n- Add this repo\'s architecture boundaries, package manager, framework versions, and security rules.\n- Never store or print API keys or other secrets.\n\n## Agent Orchestrator Mode\n\n- Copilot acts as Client/QA and final approver.\n- Fugu plans bounded subtasks and validates worker PR-like changes.\n- Workers write product code in isolated task branches/worktrees.\n- `tools/agent-runner/run.mjs` is wiring only and makes no product decisions.\n- Stage NPM publishing on `release/npm` and publish only after explicit approval.\n\n## Useful Commands\n\n```sh\nnode tools/agent-runner/run.mjs doctor\nnode tools/agent-runner/run.mjs run --task dev-agent-tasks/<task>.md\n```\n',
     );
   }
 }
@@ -303,7 +303,7 @@ async function main() {
     process.stdout.write('1. Edit tools/agent-runner/pipeline.config.json for this repo.\n');
     process.stdout.write('2. Add real API keys to .env or your shell; use .env.agent-pipeline.example for names only.\n');
     process.stdout.write('3. Run: node tools/agent-runner/run.mjs doctor\n');
-    process.stdout.write('4. Create a tiny task in agent-tasks/ and run: node tools/agent-runner/run.mjs run --task agent-tasks/<task>.md\n');
+    process.stdout.write('4. Create a tiny task in dev-agent-tasks/ and run: node tools/agent-runner/run.mjs run --task dev-agent-tasks/<task>.md\n');
   } finally {
     if (tempSource) await rm(tempSource, { recursive: true, force: true });
   }

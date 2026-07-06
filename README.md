@@ -38,21 +38,21 @@ Those are the files needed to **ship and run Agent Pipeline**. They are the only
 project files listed in `package.json#files`, so they are the only repo files that
 enter the npm tarball.
 
-Files such as `agent-context/`, `agent-output/`, `agent-tasks/`, and
-`publication/` are different: they are useful for **developing this repo and
-tracking experiments**, but they are not required to install or run Agent Pipeline.
-Keep them on development branches and out of `release/npm` unless explicitly
-needed for release documentation.
+Files with a `dev-` prefix, such as `dev-agent-context/` and
+`dev-publication/`, are different: they are useful for **developing this repo and
+tracking experiments**, but they are not required to install or run Agent
+Pipeline. Keep `dev-*` folders on development branches and out of `release/npm`
+unless explicitly needed for release documentation.
 
 ## Commands
 
 ```sh
 node tools/agent-runner/run.mjs init         # scaffold config + agent mode (idempotent)
 node tools/agent-runner/run.mjs doctor       # preflight: node version, config, keys, QA cmds
-node tools/agent-runner/run.mjs plan --task agent-tasks/<f>.md   # dry-run decomposition
+node tools/agent-runner/run.mjs plan --task dev-agent-tasks/<f>.md   # dry-run decomposition
 node tools/agent-runner/run.mjs build --plan <plan.json> --subtask <id>  # one subtask
 node tools/agent-runner/run.mjs qa           # run the repo's QA commands
-node tools/agent-runner/run.mjs run --task agent-tasks/<f>.md    # full loop plan→worker branches→Fugu validation→client approval
+node tools/agent-runner/run.mjs run --task dev-agent-tasks/<f>.md    # full loop plan→worker branches→Fugu validation→client approval
 node tools/agent-runner/run.mjs report [--run <run_id>]          # aggregate telemetry
 ```
 
@@ -120,10 +120,10 @@ package releases from an explicit `release/npm` branch, run packaging checks the
 (`npm pack`, install smoke test, metadata/version review), get client approval,
 then publish and tag the release.
 
-Development context such as `agent-context/`, `agent-output/`, `agent-tasks/`,
-and editorial drafts in `publication/` is for active work branches. Keep those
-files off `release/npm` unless the release explicitly needs a public-facing note.
-They are also excluded from the npm tarball by the package `files` whitelist.
+Development context in this source repo uses a `dev-` prefix, for example
+`dev-agent-context/` and `dev-publication/`. Keep `dev-*` folders off
+`release/npm` unless the release explicitly needs a public-facing note. They are
+also excluded from the npm tarball by the package `files` whitelist.
 
 ## Install into a repo
 
@@ -155,7 +155,7 @@ The bootstrap installs:
   Copilot guidance that does not overwrite existing repo instructions.
 - `.github/copilot-instructions.md` if the repo does not already have one.
 - `AGENTS.md` if the repo does not already have one.
-- starter `agent-context/`, `agent-tasks/`, and `agent-output/` folders.
+- starter `dev-agent-context/`, `dev-agent-tasks/`, and `dev-agent-output/` folders.
 - `.env.agent-pipeline.example` with env var names only.
 
 Existing files are skipped by default, so brownfield installs stay conservative.
@@ -207,9 +207,9 @@ This repo also ships a reusable Copilot skill at
 `.github/skills/agent-orchestrator-installer/`. Install that skill into another
 repo when you want the agent to bootstrap Orchestrator mode for you. The bundled
 script vendors `tools/agent-runner/`, runs `init`, creates starter
-`agent-context/`, `agent-tasks/`, and `agent-output/` folders, and writes an env
+`dev-agent-context/`, `dev-agent-tasks/`, and `dev-agent-output/` folders, and writes an env
 example with key names only. The starter context is indexed by
-`agent-context/context-index.md`; read that file first, then the context files it
+`dev-agent-context/context-index.md`; read that file first, then the context files it
 references, including `new-conversation-handoff.md` for session handoff. The
 npm/npx bootstrap uses this same installer under the hood.
 
@@ -299,8 +299,8 @@ Use telemetry after real runs like this:
 node tools/agent-runner/run.mjs report
 ```
 
-Keep `agent-context/telemetry.csv` and `agent-context/file-authorship.csv` as raw
-machine logs, then annotate `agent-context/model-worker-performance.csv` with
+Keep `dev-agent-context/telemetry.csv` and `dev-agent-context/file-authorship.csv` as raw
+machine logs, then annotate `dev-agent-context/model-worker-performance.csv` with
 human judgment: which worker was best for which task shape, what failed, what
 prompt/config adjustment helped, and whether QA passed. Do not paste secrets, raw
 `.env` contents, or sensitive customer data into the curated ledger.

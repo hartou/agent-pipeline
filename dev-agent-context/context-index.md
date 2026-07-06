@@ -3,7 +3,7 @@
 Read these files before substantial agent-pipeline work:
 
 - `repo-file-boundaries.md` — which files ship/run Agent Pipeline versus which
-	files are development context.
+  files are development context.
 - `current-state.md` — current branch, run state, and active goal.
 - `next-tasks.md` — bounded tasks ready for orchestration.
 - `architecture-decisions.md` — repo rules and constraints workers must follow.
@@ -15,4 +15,4 @@ Read these files before substantial agent-pipeline work:
 - `self-registration-mvp-handoff.md` — optional handoff for self-registration/MVP work.
 - `platform-map/` — repo-specific platform and integration notes.
 
-These files are development context. Keep them off release branches such as `release/npm` unless explicitly needed for release notes.
+This `dev-agent-context/` folder is source-repo development context. Keep it off release branches such as `release/npm` unless explicitly needed for release notes.

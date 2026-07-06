@@ -20,12 +20,14 @@ The npm tarball boundary is controlled by `package.json#files`. If a file is not
 
 These files help evolve, test, benchmark, or explain the pipeline, but are not required by users installing the package:
 
-- `agent-context/` — development memory, handoffs, model guardrails, release hygiene notes, and curated performance context.
-- `agent-tasks/` — local task specs for active runs.
-- `agent-output/` — generated plans, feedback, telemetry shards, raw model dumps.
-- `publication/` — editorial drafts and public narrative work in progress.
+- `dev-agent-context/` — development memory, handoffs, model guardrails, release hygiene notes, and curated performance context.
+- `dev-agent-tasks/` — local task specs for active runs, if needed in this source repo.
+- `dev-agent-output/` — generated plans, feedback, telemetry shards, raw model dumps, if needed in this source repo.
+- `dev-publication/` — editorial drafts and public narrative work in progress.
 - throwaway benchmark repos under `~/dev/` — validation/evaluation artifacts, not package content.
+
+The `dev-` prefix is intentional: it makes source-repo development artifacts visually distinct from files that ship or run Agent Pipeline.
 
 ## Release Rule
 
-Use `release/npm` only for package preparation, version review, pack/install smoke tests, approval, publish, and tags. Do not merge ordinary development context into `release/npm` unless the user explicitly requests public-facing release documentation.
+Use `release/npm` only for package preparation, version review, pack/install smoke tests, approval, publish, and tags. Do not merge `dev-*` development context into `release/npm` unless the user explicitly requests public-facing release documentation.

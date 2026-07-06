@@ -57,7 +57,7 @@ and approval. See `tools/agent-runner/GUIDE.md` for the full model.
 - **You never talk to workers directly.** All direction flows through the
   orchestrator. If something is wrong, send feedback to the orchestrator.
 - **Branch/worktree isolation.** Workers develop in task branches/worktrees against
-  the real file locations. `agent-output/` holds only plans, feedback, raw dumps,
+  the real file locations. `dev-agent-output/` holds only plans, feedback, raw dumps,
   and telemetry.
 - **Fugu validates PRs.** Copilot does not semantically validate worker PRs.
   Rejections flow from Fugu back to workers. Only Fugu-satisfied candidates return
@@ -71,9 +71,9 @@ and approval. See `tools/agent-runner/GUIDE.md` for the full model.
 
 ## The loop
 
-1. **Plan** — `node tools/agent-runner/run.mjs plan --task agent-tasks/<f>.md`
+1. **Plan** — `node tools/agent-runner/run.mjs plan --task dev-agent-tasks/<f>.md`
    (Fugu decomposes into a JSON plan; review the decomposition).
-2. **Run** — `node tools/agent-runner/run.mjs run --task agent-tasks/<f>.md`
+2. **Run** — `node tools/agent-runner/run.mjs run --task dev-agent-tasks/<f>.md`
   drives plan → worker branches → Fugu validation → client review → on failure,
   feedback → Fugu re-plans → re-build, bounded by `loop.maxRounds`.
 3. **Test the real output** yourself; if it fails, the loop feeds a feedback file
@@ -85,7 +85,7 @@ and approval. See `tools/agent-runner/GUIDE.md` for the full model.
 ## Preflight
 
 Before running the pipeline, read `.github/instructions/agent-pipeline.instructions.md`
-when it exists, then read `agent-context/context-index.md` and the relevant
+when it exists, then read `dev-agent-context/context-index.md` and the relevant
 context files it references.
 
 Before a run, verify config + keys deterministically:
