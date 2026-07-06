@@ -27,6 +27,18 @@
       "pricing": { "inputPer1M": 0, "outputPer1M": 0 }
     },
     "workers": {
+      "deepseek-4-flash": {
+        "role": "worker",
+        "provider": "deepseek",
+        "baseUrl": "https://api.deepseek.com/v1",
+        "model": "deepseek-v4-flash",
+        "modelEnv": "DEEPSEEK_FLASH_MODEL",
+        "apiKeyEnv": "DEEPSEEK_API_KEY",
+        "maxTokens": 12000,
+        "params": {},
+        "pricing": { "inputPer1M": 0.14, "outputPer1M": 0.28 },
+        "bestFor": ["primary low-cost implementation", "fast bounded product slices", "first-pass UI/game logic"]
+      },
       "deepseek-4-pro": {
         "role": "worker",
         "provider": "deepseek",
@@ -36,8 +48,20 @@
         "apiKeyEnv": "DEEPSEEK_API_KEY",
         "maxTokens": 12000,
         "params": {},
-        "pricing": { "inputPer1M": 0, "outputPer1M": 0 },
-        "bestFor": ["broad multi-file scaffolding", "first drafts"]
+        "pricing": { "inputPer1M": 0.435, "outputPer1M": 0.87 },
+        "bestFor": ["repair after QA failure", "integration hardening", "broad multi-file scaffolding when quality matters more than minimum cost"]
+      },
+      "gpt-5.4-mini": {
+        "role": "worker",
+        "provider": "openai",
+        "baseUrl": "https://api.openai.com/v1",
+        "model": "gpt-5.4-mini",
+        "modelEnv": "OPENAI_QA_MODEL",
+        "apiKeyEnv": "OPENAI_API_KEY",
+        "maxTokens": 12000,
+        "params": { "reasoning_effort": "medium" },
+        "pricing": { "inputPer1M": 0.75, "outputPer1M": 4.50 },
+        "bestFor": ["QA/spec critic", "acceptance criteria", "test and checker generation", "edge-case review"]
       },
       "gpt-4o-mini": {
         "role": "worker",
@@ -48,23 +72,8 @@
         "apiKeyEnv": "OPENAI_API_KEY",
         "maxTokens": 12000,
         "params": {},
-        "pricing": { "inputPer1M": 0, "outputPer1M": 0 },
-        "bestFor": ["scoped repo-local edits", "reviews"]
-      },
-      "glm-5.2": {
-        "role": "worker",
-        "provider": "zai",
-        "baseUrl": "https://api.z.ai/api/paas/v4",
-        "baseUrlEnv": "Z.AI_BASE_URL",
-        "model": "glm-5.2",
-        "modelEnv": "ZAI_MODEL",
-        "modelEnvAlternates": ["MODEL"],
-        "apiKeyEnv": "ZAI_API_KEY",
-        "apiKeyEnvAlternates": ["ZAI_API_SECRET", "Z.AI_API_Secret", "Z.AI_API_Key"],
-        "maxTokens": 12000,
-        "params": {},
-        "pricing": { "inputPer1M": 0, "outputPer1M": 0 },
-        "bestFor": ["fast senior coding", "implementation QA", "replacing slow broad DeepSeek tasks after evaluation"]
+        "pricing": { "inputPer1M": 0.15, "outputPer1M": 0.60 },
+        "bestFor": ["i18n", "sentiment/classification", "small transformations", "lightweight text or code chores"]
       }
     }
   },

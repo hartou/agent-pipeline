@@ -5,8 +5,9 @@
 //   Client (you/Copilot) -> talks only to the Orchestrator, tests the REAL
 //     output, approves/rejects.
 //   Orchestrator (Fugu)  -> decomposes a request into bounded worker subtasks.
-//   Workers (deepseek-4-pro, gpt-4o-mini) -> write product code DIRECTLY into the
-//     real repo. No sandbox, no staging folder, no "build then move".
+//   Workers (deepseek-v4-flash, deepseek-v4-pro, gpt-5.4-mini, gpt-4o-mini) ->
+//     build, critique, repair, or handle utility work DIRECTLY in the real repo.
+//     No sandbox, no staging folder, no "build then move".
 //
 // Everything repo-specific (providers, models, key ENV names, paths, QA commands,
 // stack facts, telemetry) lives in pipeline.config.json. Keys are referenced by
