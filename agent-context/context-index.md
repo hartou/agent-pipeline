@@ -2,6 +2,8 @@
 
 Read these files before substantial agent-pipeline work:
 
+- `repo-file-boundaries.md` — which files ship/run Agent Pipeline versus which
+	files are development context.
 - `current-state.md` — current branch, run state, and active goal.
 - `next-tasks.md` — bounded tasks ready for orchestration.
 - `architecture-decisions.md` — repo rules and constraints workers must follow.

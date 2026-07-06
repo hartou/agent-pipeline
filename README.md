@@ -25,13 +25,24 @@ governance are intentionally separate.
 ## Layout
 
 ```
-tools/agent-runner/
-  run.mjs                       # the engine (repo-agnostic)
-  pipeline.config.json          # THIS repo's profile (the only per-repo variable)
-  pipeline.config.schema.json   # validates the config (used by `doctor`)
-  templates/                    # scaffolds written by `init`
-  package.json                  # name, version (stamped into telemetry), bin
+run.mjs                         # the engine (repo-agnostic)
+pipeline.config.schema.json     # validates generated configs (used by `doctor`)
+templates/                      # scaffolds written by `init`
+Dockerfile                      # runner image for containerized orchestration/workers
+.github/skills/                 # reusable Copilot installer skill
+README.md / GUIDE.md            # public install and concept docs
+img/                            # public README assets
 ```
+
+Those are the files needed to **ship and run Agent Pipeline**. They are the only
+project files listed in `package.json#files`, so they are the only repo files that
+enter the npm tarball.
+
+Files such as `agent-context/`, `agent-output/`, `agent-tasks/`, and
+`publication/` are different: they are useful for **developing this repo and
+tracking experiments**, but they are not required to install or run Agent Pipeline.
+Keep them on development branches and out of `release/npm` unless explicitly
+needed for release documentation.
 
 ## Commands
 
