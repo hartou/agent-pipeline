@@ -8,6 +8,8 @@ Read these files before substantial agent-pipeline work:
 - `next-tasks.md` — bounded tasks ready for orchestration.
 - `architecture-decisions.md` — repo rules and constraints workers must follow.
 - `model-worker-guardrails.md` — model roles, strengths, and known failure modes.
+- `openai-eval-roster.md` — new OpenAI eval models, official pricing snapshot,
+  and the next benchmark prompt.
 - `model-worker-performance.csv` — curated model performance ledger.
 - `mvp-tracker.md` — MVP scope, status, and acceptance.
 - `new-conversation-handoff.md` — concise handoff for the next session.
