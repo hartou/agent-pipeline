@@ -78,13 +78,7 @@ QA:              green
 
 That makes DeepSeek look dramatically faster on this tiny benchmark. But that number is also suspiciously fast: 5,193 reported completion tokens in about one second implies a token rate that is not realistic for a normal end-to-end generation. So the lesson is not simply "DeepSeek is faster than GLM" or "GLM is slow." The lesson is that provider telemetry and wall-clock timing need to be measured more carefully before we promote a model into a role.
 
-The experiment changed the pipeline in a few concrete ways.
-
-First, we added parallelism diagnostics. Each run now reports how many build tasks are initially ready, how many dependency edges the orchestrator produced, and how many file-overlap pairs would force serialization. This tells us whether a slow run is caused by Docker, by the runner, or by the plan graph.
-
-Second, we added per-file authorship metadata. In a multi-agent environment, Git still shows the human as the committer, but that is not enough. We now write a `file-authorship.csv` ledger that records which worker wrote each file, which model/provider it used, the subtask id, and whether the file was created or updated. That gives us a practical audit trail without injecting comments into product code.
-
-Third, we learned that our model evaluation needs streaming telemetry. For a fair comparison, the runner should capture:
+The experiment also changed what we want the pipeline to measure. Parallelism diagnostics and per-file authorship are useful internally, but the bigger lesson was simpler: model evaluation needs streaming-aware telemetry. For a fair comparison, the runner should capture:
 
 - time to first token
 - generation duration
