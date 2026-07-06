@@ -1,0 +1,1 @@
+date,priority,batch,job,provider,model,verb,task_file,result,qa_decision,integration_decision,files_changed,validation,what_worked,what_failed,prompt_adjustment,next_use

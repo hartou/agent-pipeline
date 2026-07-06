@@ -139,6 +139,11 @@ on the integration branch. When it is time to publish, create or update
 and version review), ask for client approval, then publish and tag from that
 release branch.
 
+Keep development memory out of that branch. `agent-context/`, `agent-output/`,
+`agent-tasks/`, and `publication/` are useful while building and evaluating, but
+they should not be part of the npm release branch unless explicitly approved as
+release documentation.
+
 ### What's configurable (so it ports to any repo)
 
 Everything repo‑specific lives in one file, [`pipeline.config.json`](./pipeline.config.json):

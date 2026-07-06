@@ -21,9 +21,15 @@ templates, and skill without losing their customized pipeline config.
 - `.github/copilot-instructions.md` if the target repo does not already have one.
 - `tools/agent-runner/pipeline.config.json` via `run.mjs init`.
 - Starter `agent-context/`, `agent-tasks/`, and `agent-output/` folders.
-- `agent-context/handoff.md` for concise conversation resume notes across Copilot sessions.
+- `agent-context/` development tracking structure: context index, current state,
+  next tasks, architecture decisions, model-worker guardrails, review checklist,
+  MVP tracker, new-conversation handoff, platform map, and curated performance CSV.
 - Starter `AGENTS.md` only if the target repo does not already have one.
 - `.env.agent-pipeline.example` with required env var names only.
+
+The development tracking structure is for active work branches. It should not be
+carried into a package release branch such as `release/npm` unless the user
+explicitly asks for release documentation.
 
 Secrets are never generated, requested, printed, or committed. The user adds real API keys to their own `.env` or shell.
 

@@ -109,6 +109,11 @@ package releases from an explicit `release/npm` branch, run packaging checks the
 (`npm pack`, install smoke test, metadata/version review), get client approval,
 then publish and tag the release.
 
+Development context such as `agent-context/`, `agent-output/`, `agent-tasks/`,
+and editorial drafts in `publication/` is for active work branches. Keep those
+files off `release/npm` unless the release explicitly needs a public-facing note.
+They are also excluded from the npm tarball by the package `files` whitelist.
+
 ## Install into a repo
 
 Prerequisites:
@@ -192,10 +197,10 @@ This repo also ships a reusable Copilot skill at
 repo when you want the agent to bootstrap Orchestrator mode for you. The bundled
 script vendors `tools/agent-runner/`, runs `init`, creates starter
 `agent-context/`, `agent-tasks/`, and `agent-output/` folders, and writes an env
-example with key names only. The starter context includes
-`agent-context/handoff.md`, a compact conversation handoff note to update before
-ending long sessions or after accepted pipeline runs. The npm/npx bootstrap uses
-this same installer under the hood.
+example with key names only. The starter context is indexed by
+`agent-context/context-index.md`; read that file first, then the context files it
+references, including `new-conversation-handoff.md` for session handoff. The
+npm/npx bootstrap uses this same installer under the hood.
 
 There are two normal ways to use it.
 

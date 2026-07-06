@@ -21,6 +21,11 @@ the Northfield app repo.
 npx --yes --prefer-online @hartou/agent-pipeline init --target . --skill
 ```
 
+- Development context policy: `agent-context/`, `agent-output/`, `agent-tasks/`,
+  and `publication/` are active-work context. Keep them off `release/npm` unless
+  the user explicitly asks to include a public-facing release note. The npm
+  package `files` whitelist excludes these paths from published tarballs.
+
 - Latest public install validation repo:
   `~/dev/new_repos/agent-pipeline-public-024-deepseek-test-20260705-002958`.
 - Latest validation result: generated `.env.agent-pipeline.example` and
@@ -64,7 +69,9 @@ Installs into a target repo:
   is still the default behavior; `--skill` makes the intent explicit. Use
   `--skip-skill` to opt out.
 - `.github/copilot-instructions.md` if missing.
-- starter `agent-context/` files.
+- starter `agent-context/` files, including the context index, current state,
+  next tasks, architecture decisions, model-worker guardrails, review checklist,
+  MVP tracker, conversation handoff, platform map, and curated performance CSV.
 - empty `agent-tasks/` and `agent-output/` directories.
 - starter `AGENTS.md` only if the target repo does not already have one.
 - `.env.agent-pipeline.example` with env var names only.
@@ -93,11 +100,10 @@ Yes, installation adds Copilot-facing context and instructions:
   `.github/copilot-instructions.md` and `AGENTS.md` untouched while still teaching
   Copilot where to find the pipeline workflow.
 - `AGENTS.md` gives repo-wide operating rules and role boundaries.
-- `agent-context/current-state.md`, `next-tasks.md`,
-  `architecture-decisions.md`, `review-checklist.md`, and `handoff.md` provide
-  compact persistent context for future runs. `handoff.md` is the conversation
-  handoff: update it before ending long Copilot sessions or after accepted
-  pipeline runs so the next session can resume without replaying the chat.
+- `agent-context/context-index.md` is the entry point for development context.
+  Read it first, then the files it references: current state, next tasks,
+  architecture decisions, model-worker guardrails, review checklist, MVP tracker,
+  platform map, and `new-conversation-handoff.md` for session handoff.
 - The installer skill itself remains available in `.github/skills/` when using
   the skill-installed path.
 
