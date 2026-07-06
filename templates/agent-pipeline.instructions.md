@@ -1,5 +1,5 @@
 ---
-description: "Use when working with agent-pipeline, Agent Orchestrator mode, Fugu, DeepSeek, gpt-4o-mini, agent-tasks, agent-context, tools/agent-runner, or multi-agent implementation workflows."
+description: "Use when working with agent-pipeline, Agent Orchestrator mode, Fugu, DeepSeek, gpt-4o-mini, dev-agent-tasks, dev-agent-context, tools/agent-runner, or multi-agent implementation workflows."
 applyTo: "**"
 ---
 
@@ -8,14 +8,14 @@ applyTo: "**"
 This repo has Agent Pipeline installed. Treat this file as the pipeline-specific
 companion to any repo-owned `AGENTS.md` or `.github/copilot-instructions.md`.
 
-Before pipeline work, read:
+Before pipeline work, read the context folder through its index first:
 
 - `AGENTS.md`
-- `agent-context/current-state.md`
-- `agent-context/next-tasks.md`
-- `agent-context/architecture-decisions.md`
-- `agent-context/review-checklist.md`
-- `agent-context/handoff.md`
+- `dev-agent-context/context-index.md`
+- Every relevant file referenced by `dev-agent-context/context-index.md`, especially
+  `current-state.md`, `next-tasks.md`, `architecture-decisions.md`,
+  `model-worker-guardrails.md`, `review-checklist.md`, and
+  `new-conversation-handoff.md`
 - `tools/agent-runner/GUIDE.md`
 
 When the user asks for implementation through Agent Orchestrator mode or the
@@ -35,12 +35,15 @@ agent-pipeline:
   PRs; Copilot/the Client approves only after Fugu is satisfied.
 - Do not publish to NPM from ordinary implementation branches. Use `release/npm`
   for package release preparation and publish only after explicit client approval.
+- Treat `dev-agent-context/`, `dev-agent-output/`, `dev-agent-tasks/`, and
+  `dev-publication/` as development context. Do not carry them into `release/npm` unless explicitly
+  requested as release documentation.
 
 Normal loop:
 
 ```sh
 node tools/agent-runner/run.mjs doctor
-node tools/agent-runner/run.mjs run --task agent-tasks/<task>.md
+node tools/agent-runner/run.mjs run --task dev-agent-tasks/<task>.md
 node tools/agent-runner/run.mjs report
 ```
 

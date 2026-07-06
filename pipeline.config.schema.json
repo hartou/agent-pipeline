@@ -87,6 +87,7 @@
       "additionalProperties": false,
       "properties": {
         "csv": { "type": "string", "description": "Tier-1 auto-appended machine telemetry." },
+        "fileAuthors": { "type": "string", "description": "Per-file worker authorship ledger for generated or updated files." },
         "curatedCsv": { "type": "string", "description": "Tier-2 hand-curated acceptance ledger; engine only drafts rows." }
       }
     },
@@ -112,9 +113,12 @@
         "role": { "type": "string", "enum": ["orchestrator", "worker"] },
         "provider": { "type": "string" },
         "baseUrl": { "type": "string", "format": "uri" },
+        "baseUrlEnv": { "type": "string", "description": "Optional env var that overrides `baseUrl` when set." },
         "model": { "type": "string" },
         "modelEnv": { "type": "string", "description": "Optional env var that overrides `model` when set." },
+        "modelEnvAlternates": { "type": "array", "items": { "type": "string" }, "description": "Fallback env var names checked after `modelEnv`." },
         "apiKeyEnv": { "type": "string", "description": "Name of the env var holding the API key. The key itself is NEVER stored here." },
+        "apiKeyEnvAlternates": { "type": "array", "items": { "type": "string" }, "description": "Fallback API key env var names checked after `apiKeyEnv`." },
         "maxTokens": { "type": "integer", "minimum": 1 },
         "params": { "type": "object" },
         "pricing": {

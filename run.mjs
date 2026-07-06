@@ -47,7 +47,9 @@ function engineVersion() {
 function parseEnvFile(text) {
   const env = {};
   for (const line of text.split('\n')) {
-    const m = line.match(/^([A-Za-z0-9_]+)=(.*)$/);
+    const source = line.trim().replace(/^export\s+/, '');
+    if (!source || source.startsWith('#')) continue;
+    const m = source.match(/^([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*(.*)$/);
     if (!m) continue;
     let v = m[2].trim();
     if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
@@ -90,14 +92,17 @@ function resolveActor(nameOrProvider, reg, env) {
     a = Object.values(actors).find((x) => x.provider === want);
   }
   if (!a) throw new Error(`Unknown actor/provider: ${nameOrProvider}`);
-  const model = a.modelEnv && env[a.modelEnv] ? env[a.modelEnv] : a.model;
+  const modelEnv = [a.modelEnv, ...(a.modelEnvAlternates || [])].find((name) => name && env[name]);
+  const apiKeyEnv = [a.apiKeyEnv, ...(a.apiKeyEnvAlternates || [])].find((name) => name && env[name]) || a.apiKeyEnv;
+  const baseUrl = a.baseUrlEnv && env[a.baseUrlEnv] ? env[a.baseUrlEnv] : a.baseUrl;
+  const model = modelEnv ? env[modelEnv] : a.model;
   return {
     label: a.key,
     role: a.role,
     provider: a.provider,
-    baseUrl: a.baseUrl,
-    apiKeyEnv: a.apiKeyEnv,
-    apiKey: a.apiKeyEnv ? env[a.apiKeyEnv] : undefined,
+    baseUrl,
+    apiKeyEnv,
+    apiKey: apiKeyEnv ? env[apiKeyEnv] : undefined,
     model,
     extra: a.params || {},
     maxTokens: a.maxTokens || 4000,
@@ -111,6 +116,11 @@ const TELEMETRY_COLUMNS = [
   'provider', 'model', 'prompt_tokens', 'completion_tokens', 'total_tokens',
   'latency_ms', 'http_status', 'result', 'qa_passed', 'qa_failed',
   'files_written', 'est_cost_usd', 'task_file', 'error',
+];
+
+const AUTHORSHIP_COLUMNS = [
+  'ts_iso', 'engine_version', 'run_id', 'round', 'subtask_id', 'file_path',
+  'action', 'actor', 'role', 'provider', 'model',
 ];
 
 function csvField(v) {
@@ -143,6 +153,23 @@ async function logTelemetry(reg, row) {
   };
   telemetryChain = telemetryChain.then(write, write);
   return telemetryChain;
+}
+
+let authorshipChain = Promise.resolve();
+async function logFileAuthorship(reg, rows) {
+  const csvPath = process.env.PIPELINE_AUTHORSHIP_CSV || reg?.telemetry?.fileAuthors || 'dev-agent-context/file-authorship.csv';
+  if (!csvPath || !rows.length) return undefined;
+  const write = async () => {
+    const abs = resolve(ROOT, csvPath);
+    await mkdir(dirname(abs), { recursive: true });
+    if (!existsSync(abs)) await writeFile(abs, AUTHORSHIP_COLUMNS.join(',') + '\n', 'utf8');
+    const ts = new Date().toISOString();
+    const version = engineVersion();
+    const lines = rows.map((row) => AUTHORSHIP_COLUMNS.map((c) => csvField({ ts_iso: ts, engine_version: version, ...row }[c])).join(','));
+    await appendFile(abs, lines.join('\n') + '\n', 'utf8');
+  };
+  authorshipChain = authorshipChain.then(write, write);
+  return authorshipChain;
 }
 
 async function chat(cfg, messages, maxTokens = 4000) {
@@ -218,6 +245,10 @@ Read the customer request and the given task spec, then decompose the work into
 bounded worker sub-tasks. Assign each sub-task to the best-fit worker:
 ${workerRoster(reg)}
 Respect the task's stated scope and out-of-scope. Do NOT invent files or APIs.
+Optimize for wall-clock speed: split independent, file-disjoint work into separate
+sub-tasks and leave their "dependsOn" arrays empty. Do NOT add dependencies for
+preference, review order, or convenience; add them only when a later task truly
+needs output from an earlier task or when two tasks edit the same file.
 Tag each sub-task with a "kind":
 - "build": the worker writes/edits code files (this is the default for
   implementation work).
@@ -276,9 +307,10 @@ async function writeRepoFiles(files) {
     }
     const abs = resolve(ROOT, f.path);
     if (!abs.startsWith(ROOT + '/')) throw new Error(`Refusing path outside repo: ${f.path}`);
+    const action = existsSync(abs) ? 'updated' : 'created';
     await mkdir(dirname(abs), { recursive: true });
     await writeFile(abs, f.content, 'utf8');
-    written.push(f.path);
+    written.push({ path: f.path, action });
   }
   return written;
 }
@@ -346,7 +378,7 @@ function spawnCapture(command, args) {
 
 async function doOrchestrateInContainer({ reg, task, feedback, runId, round }) {
   ensureImage(reg);
-  const artifacts = reg.paths?.artifacts || 'agent-output';
+  const artifacts = reg.paths?.artifacts || 'dev-agent-output';
   const inputRel = join(artifacts, '.orchestrator', `${safeName(runId)}-r${round}.json`);
   await mkdir(dirname(resolve(ROOT, inputRel)), { recursive: true });
   await writeFile(resolve(ROOT, inputRel), JSON.stringify({ task, feedback, runId, round }), 'utf8');
@@ -399,12 +431,23 @@ async function doBuildSubtask({ reg, env, sub, providerOverride, contextFiles, r
   let written = [];
   let dumpPath;
   if (files.length === 0) {
-    dumpPath = join(reg.paths?.artifacts || 'agent-output', `${sub.id}.raw.txt`);
+    dumpPath = join(reg.paths?.artifacts || 'dev-agent-output', `${sub.id}.raw.txt`);
     await mkdir(dirname(resolve(ROOT, dumpPath)), { recursive: true });
     await writeFile(resolve(ROOT, dumpPath), out.content, 'utf8');
     result = 'no_file_blocks';
   } else {
     written = await writeRepoFiles(files);
+    await logFileAuthorship(reg, written.map((file) => ({
+      run_id: runId,
+      round,
+      subtask_id: sub.id,
+      file_path: file.path,
+      action: file.action,
+      actor: cfg.label,
+      role: cfg.role,
+      provider: cfg.provider,
+      model: cfg.model,
+    })));
   }
   await logTelemetry(reg, {
     run_id: runId, round, verb: 'build', actor: cfg.label, role: cfg.role,
@@ -418,7 +461,7 @@ async function doBuildSubtask({ reg, env, sub, providerOverride, contextFiles, r
   if (result === 'no_file_blocks') {
     process.stderr.write(`[build:${cfg.label}] ${sub.id} produced no file changes (raw output at ${dumpPath}).\n`);
   } else {
-    process.stderr.write(`[build:${cfg.label}] ${sub.id} wrote ${written.length} file(s): ${written.join(', ')}\n`);
+    process.stderr.write(`[build:${cfg.label}] ${sub.id} wrote ${written.length} file(s): ${written.map((f) => f.path).join(', ')}\n`);
   }
   return { written, result, dumpPath };
 }
@@ -581,8 +624,10 @@ async function doDoctor({ reg, env }) {
   if (errs.length === 0) line('✓', 'config schema');
   else { errs.forEach((e) => line('✗', e)); ok = false; }
   for (const a of Object.values(allActors(reg))) {
-    if (a.apiKeyEnv && env[a.apiKeyEnv]) line('✓', `${a.key}: key ${a.apiKeyEnv} present`);
-    else { line('✗', `${a.key}: missing ${a.apiKeyEnv} in .env`); ok = false; }
+    const cfg = resolveActor(a.key, reg, env);
+    const keyNames = [a.apiKeyEnv, ...(a.apiKeyEnvAlternates || [])].filter(Boolean).join(' or ');
+    if (cfg.apiKey) line('✓', `${a.key}: key ${cfg.apiKeyEnv} present`);
+    else { line('✗', `${a.key}: missing ${keyNames} in .env`); ok = false; }
   }
   const names = new Set((reg.qa?.commands || []).map((c) => c.name));
   for (const n of reg.qa?.order || []) {
@@ -617,13 +662,18 @@ async function runGraph(subtasks, concurrency, runOne) {
 
   while (remaining.size > 0 || running.size > 0) {
     if (running.size < concurrency) {
+      const started = [];
       for (const id of [...remaining]) {
         if (running.size >= concurrency) break;
         const s = byId.get(id);
         if (!depsReady(s) || clashes(s)) continue;
         filesOf(s).forEach((f) => lockedFiles.add(f));
         remaining.delete(id);
+        started.push(id);
         running.set(id, (async () => ({ id, sub: s, r: await runOne(s) }))());
+      }
+      if (started.length) {
+        process.stderr.write(`[graph] starting ${started.length}/${concurrency}: ${started.join(', ')}\n`);
       }
     }
     if (running.size === 0) {
@@ -640,6 +690,20 @@ async function runGraph(subtasks, concurrency, runOne) {
   return results;
 }
 
+function analyzeParallelism(subtasks) {
+  const dependencyEdges = subtasks.reduce((n, s) => n + (s.dependsOn || []).length, 0);
+  const initiallyReady = subtasks.filter((s) => !(s.dependsOn || []).length).length;
+  let fileOverlapPairs = 0;
+  for (let i = 0; i < subtasks.length; i += 1) {
+    const left = new Set(subtasks[i].files || []);
+    if (left.size === 0) continue;
+    for (let j = i + 1; j < subtasks.length; j += 1) {
+      if ((subtasks[j].files || []).some((f) => left.has(f))) fileOverlapPairs += 1;
+    }
+  }
+  return { dependencyEdges, initiallyReady, fileOverlapPairs };
+}
+
 function ensureImage(reg) {
   const image = reg.container.image;
   if (spawnSync('docker', ['image', 'inspect', image], { stdio: 'ignore' }).status === 0) return;
@@ -652,10 +716,12 @@ function ensureImage(reg) {
 function makeContainerRunner({ reg, image, planRel, runId, round, artifacts }) {
   return (sub) => new Promise((resolveP) => {
     const shardRel = `${artifacts}/.telemetry/${safeName(runId)}__${safeName(sub.id)}.csv`;
+    const authorshipShardRel = `${artifacts}/.authorship/${safeName(runId)}__${safeName(sub.id)}.csv`;
     const args = [
       'run', '--rm',
       '-v', `${ROOT}:/repo`, '-w', '/repo',
       '-e', `PIPELINE_TELEMETRY_CSV=/repo/${shardRel}`,
+      '-e', `PIPELINE_AUTHORSHIP_CSV=/repo/${authorshipShardRel}`,
       image,
       'node', engineScriptRel(), 'build',
       '--plan', planRel, '--subtask', sub.id, '--run-id', runId, '--round', String(round),
@@ -682,12 +748,20 @@ function makeInProcessRunner({ reg, env, runId, round }) {
 // After a container batch, fold each per-sub-task telemetry shard into the main
 // CSV (single writer here, so no interleaving), then remove the shard dir.
 async function mergeTelemetryShards(reg, shardDir) {
+  await mergeCsvShards(reg.telemetry.csv, TELEMETRY_COLUMNS, shardDir);
+}
+
+async function mergeAuthorshipShards(reg, shardDir) {
+  await mergeCsvShards(reg.telemetry?.fileAuthors || 'dev-agent-context/file-authorship.csv', AUTHORSHIP_COLUMNS, shardDir);
+}
+
+async function mergeCsvShards(csvPath, columns, shardDir) {
   const dirAbs = resolve(ROOT, shardDir);
   if (!existsSync(dirAbs)) return;
-  const mainAbs = resolve(ROOT, reg.telemetry.csv);
+  const mainAbs = resolve(ROOT, csvPath);
   await mkdir(dirname(mainAbs), { recursive: true });
-  if (!existsSync(mainAbs)) await writeFile(mainAbs, TELEMETRY_COLUMNS.join(',') + '\n', 'utf8');
-  const header = TELEMETRY_COLUMNS.join(',');
+  if (!existsSync(mainAbs)) await writeFile(mainAbs, columns.join(',') + '\n', 'utf8');
+  const header = columns.join(',');
   for (const f of (await readdir(dirAbs)).filter((x) => x.endsWith('.csv'))) {
     const lines = (await readFile(join(dirAbs, f), 'utf8')).split('\n').filter((l) => l.length);
     const rows = lines[0] === header ? lines.slice(1) : lines;
@@ -700,7 +774,7 @@ async function mergeTelemetryShards(reg, shardDir) {
 
 async function doRun({ reg, env, task, taskFile }) {
   const runId = `run-${new Date().toISOString().replace(/[:.]/g, '-')}`;
-  const artifacts = reg.paths?.artifacts || 'agent-output';
+  const artifacts = reg.paths?.artifacts || 'dev-agent-output';
   const base = basename(taskFile, '.md');
   const maxRounds = reg.loop?.maxRounds || 1;
   let feedback = '';
@@ -739,9 +813,13 @@ async function doRun({ reg, env, task, taskFile }) {
     } else {
       runOne = makeInProcessRunner({ reg, env, runId, round });
     }
-    process.stderr.write(`[run ${runId}] executing ${buildable.length} build sub-task(s) at concurrency ${concurrency}${useContainers ? ' (containers)' : ' (in-process)'}...\n`);
+    const parallel = analyzeParallelism(buildable);
+    process.stderr.write(`[run ${runId}] executing ${buildable.length} build sub-task(s) at concurrency ${concurrency}${useContainers ? ' (containers)' : ' (in-process)'}; initially-ready=${parallel.initiallyReady}, dependency-edges=${parallel.dependencyEdges}, file-overlap-pairs=${parallel.fileOverlapPairs}.\n`);
     const graphResults = await runGraph(buildable, concurrency, runOne);
-    if (useContainers) await mergeTelemetryShards(reg, join(artifacts, '.telemetry'));
+    if (useContainers) {
+      await mergeTelemetryShards(reg, join(artifacts, '.telemetry'));
+      await mergeAuthorshipShards(reg, join(artifacts, '.authorship'));
+    }
     const buildIssues = graphResults
       .filter((g) => g.r.exitCode !== 0)
       .map((g) => ({ sub: g.sub, res: { result: g.r.blocked ? 'blocked' : 'build_failed', dumpPath: g.r.dumpPath || join(artifacts, `${g.sub.id}.raw.txt`) } }));
@@ -807,7 +885,7 @@ async function main() {
       ? await readFile(resolve(ROOT, args.feedback), 'utf8')
       : '';
     const content = await doOrchestrate({ reg, env, task, feedback, runId: `plan-${Date.now()}`, round: 0 });
-    const out = args.out || join(reg.paths?.artifacts || 'agent-output', `${basename(args.task, '.md')}.plan.json`);
+    const out = args.out || join(reg.paths?.artifacts || 'dev-agent-output', `${basename(args.task, '.md')}.plan.json`);
     await mkdir(dirname(resolve(ROOT, out)), { recursive: true });
     await writeFile(resolve(ROOT, out), content, 'utf8');
     process.stderr.write(`[plan] wrote ${out}\n`);
@@ -880,7 +958,7 @@ async function main() {
     ];
     process.stderr.write(`[worker:${cfg.label}] calling ${cfg.model}...\n`);
     const out = await chat(cfg, messages, cfg.maxTokens);
-    const dest = args.out || join(reg.paths?.artifacts || 'agent-output', `${basename(args.task, '.md')}.${args.provider}.md`);
+    const dest = args.out || join(reg.paths?.artifacts || 'dev-agent-output', `${basename(args.task, '.md')}.${args.provider}.md`);
     await mkdir(dirname(resolve(ROOT, dest)), { recursive: true });
     await writeFile(resolve(ROOT, dest), out.content, 'utf8');
     process.stderr.write(`[worker:${cfg.label}] wrote ${dest}\n`);

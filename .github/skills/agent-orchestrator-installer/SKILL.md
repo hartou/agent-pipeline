@@ -1,6 +1,6 @@
 ---
 name: agent-orchestrator-installer
-description: 'Install or upgrade Agent Orchestrator mode and the agent-pipeline in another repository. Use when: bootstrap orchestrator agent mode, vendor agent-pipeline, upgrade installed runner/templates, install Fugu/DeepSeek/gpt-4o-mini workflow, create pipeline config, AGENTS.md, agent-context, agent-tasks, or agent-output.'
+description: 'Install or upgrade Agent Orchestrator mode and the agent-pipeline in another repository. Use when: bootstrap orchestrator agent mode, vendor agent-pipeline, upgrade installed runner/templates, install Fugu/DeepSeek/gpt-4o-mini workflow, create pipeline config, AGENTS.md, dev-agent-context, dev-agent-tasks, or dev-agent-output.'
 argument-hint: '<target-repo-path> [--source <agent-pipeline-checkout>] [--upgrade|--force]'
 ---
 
@@ -20,10 +20,16 @@ templates, and skill without losing their customized pipeline config.
    companion instruction file that does not overwrite repo-owned guidance.
 - `.github/copilot-instructions.md` if the target repo does not already have one.
 - `tools/agent-runner/pipeline.config.json` via `run.mjs init`.
-- Starter `agent-context/`, `agent-tasks/`, and `agent-output/` folders.
-- `agent-context/handoff.md` for concise conversation resume notes across Copilot sessions.
+- Starter `dev-agent-context/`, `dev-agent-tasks/`, and `dev-agent-output/` folders.
+- `dev-agent-context/` development tracking structure: context index, current state,
+  next tasks, architecture decisions, model-worker guardrails, review checklist,
+  MVP tracker, new-conversation handoff, platform map, and curated performance CSV.
 - Starter `AGENTS.md` only if the target repo does not already have one.
 - `.env.agent-pipeline.example` with required env var names only.
+
+The development tracking structure is for active work branches. It should not be
+carried into a package release branch such as `release/npm` unless the user
+explicitly asks for release documentation.
 
 Secrets are never generated, requested, printed, or committed. The user adds real API keys to their own `.env` or shell.
 
@@ -93,10 +99,10 @@ OPENAI_API_KEY=
 node tools/agent-runner/run.mjs doctor
 ```
 
-6. Create a tiny smoke task under `agent-tasks/` and run the loop only after `doctor` is green:
+6. Create a tiny smoke task under `dev-agent-tasks/` and run the loop only after `doctor` is green:
 
 ```sh
-node tools/agent-runner/run.mjs run --task agent-tasks/smoke-test.md
+node tools/agent-runner/run.mjs run --task dev-agent-tasks/smoke-test.md
 ```
 
 7. Commit the installed skill/runner/config changes in the target repo when accepted.

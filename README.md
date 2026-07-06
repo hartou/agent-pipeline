@@ -25,23 +25,34 @@ governance are intentionally separate.
 ## Layout
 
 ```
-tools/agent-runner/
-  run.mjs                       # the engine (repo-agnostic)
-  pipeline.config.json          # THIS repo's profile (the only per-repo variable)
-  pipeline.config.schema.json   # validates the config (used by `doctor`)
-  templates/                    # scaffolds written by `init`
-  package.json                  # name, version (stamped into telemetry), bin
+run.mjs                         # the engine (repo-agnostic)
+pipeline.config.schema.json     # validates generated configs (used by `doctor`)
+templates/                      # scaffolds written by `init`
+Dockerfile                      # runner image for containerized orchestration/workers
+.github/skills/                 # reusable Copilot installer skill
+README.md / GUIDE.md            # public install and concept docs
+img/                            # public README assets
 ```
+
+Those are the files needed to **ship and run Agent Pipeline**. They are the only
+project files listed in `package.json#files`, so they are the only repo files that
+enter the npm tarball.
+
+Files with a `dev-` prefix, such as `dev-agent-context/` and
+`dev-publication/`, are different: they are useful for **developing this repo and
+tracking experiments**, but they are not required to install or run Agent
+Pipeline. Keep `dev-*` folders on development branches and out of `release/npm`
+unless explicitly needed for release documentation.
 
 ## Commands
 
 ```sh
 node tools/agent-runner/run.mjs init         # scaffold config + agent mode (idempotent)
 node tools/agent-runner/run.mjs doctor       # preflight: node version, config, keys, QA cmds
-node tools/agent-runner/run.mjs plan --task agent-tasks/<f>.md   # dry-run decomposition
+node tools/agent-runner/run.mjs plan --task dev-agent-tasks/<f>.md   # dry-run decomposition
 node tools/agent-runner/run.mjs build --plan <plan.json> --subtask <id>  # one subtask
 node tools/agent-runner/run.mjs qa           # run the repo's QA commands
-node tools/agent-runner/run.mjs run --task agent-tasks/<f>.md    # full loop plan→worker branches→Fugu validation→client approval
+node tools/agent-runner/run.mjs run --task dev-agent-tasks/<f>.md    # full loop plan→worker branches→Fugu validation→client approval
 node tools/agent-runner/run.mjs report [--run <run_id>]          # aggregate telemetry
 ```
 
@@ -66,6 +77,25 @@ Set `container.enabled: false` to fall back to in-process execution (still
 parallel, governed by `loop.concurrency`). Set `container.orchestrator: false` or
 `container.workers: false` to opt only one side out of containers.
 
+When a run appears serial, check the runner's graph line before blaming Docker:
+it prints the configured concurrency, how many build sub-tasks are initially
+ready, how many dependency edges Fugu planned, and how many file-overlap pairs the
+safety lock found. If `initially-ready=1` or most tasks share files, the plan is
+serial even though container mode is enabled.
+
+## Worker model evaluation
+
+The default scaffold includes three worker profiles: DeepSeek for broad first
+drafts, gpt-4o-mini for scoped local edits/reviews, and `glm-5.2` as a fast senior
+coder plus implementation-QA candidate. The orchestrator sees each worker's
+`bestFor` hints and should assign GLM to file-disjoint implementation or review
+slices while telemetry records latency, token use, file output, and QA outcome.
+
+For Z.AI-compatible GLM endpoints, keep secrets in `.env` and reference only env
+var names in config. The scaffold uses `ZAI_API_KEY` / `ZAI_MODEL`, with fallbacks
+for dotted names such as `Z.AI_API_Key`, `Z.AI_API_Secret`, `Z.AI_BASE_URL`, and
+the generic `MODEL` variable.
+
 ## Branch/worktree acceptance flow
 
 The intended product workflow is branch-based, not shared-checkout editing:
@@ -89,6 +119,11 @@ accumulate on the integration branch without being published immediately. Prepar
 package releases from an explicit `release/npm` branch, run packaging checks there
 (`npm pack`, install smoke test, metadata/version review), get client approval,
 then publish and tag the release.
+
+Development context in this source repo uses a `dev-` prefix, for example
+`dev-agent-context/` and `dev-publication/`. Keep `dev-*` folders off
+`release/npm` unless the release explicitly needs a public-facing note. They are
+also excluded from the npm tarball by the package `files` whitelist.
 
 ## Install into a repo
 
@@ -120,7 +155,7 @@ The bootstrap installs:
   Copilot guidance that does not overwrite existing repo instructions.
 - `.github/copilot-instructions.md` if the repo does not already have one.
 - `AGENTS.md` if the repo does not already have one.
-- starter `agent-context/`, `agent-tasks/`, and `agent-output/` folders.
+- starter `dev-agent-context/`, `dev-agent-tasks/`, and `dev-agent-output/` folders.
 - `.env.agent-pipeline.example` with env var names only.
 
 Existing files are skipped by default, so brownfield installs stay conservative.
@@ -172,11 +207,11 @@ This repo also ships a reusable Copilot skill at
 `.github/skills/agent-orchestrator-installer/`. Install that skill into another
 repo when you want the agent to bootstrap Orchestrator mode for you. The bundled
 script vendors `tools/agent-runner/`, runs `init`, creates starter
-`agent-context/`, `agent-tasks/`, and `agent-output/` folders, and writes an env
-example with key names only. The starter context includes
-`agent-context/handoff.md`, a compact conversation handoff note to update before
-ending long sessions or after accepted pipeline runs. The npm/npx bootstrap uses
-this same installer under the hood.
+`dev-agent-context/`, `dev-agent-tasks/`, and `dev-agent-output/` folders, and writes an env
+example with key names only. The starter context is indexed by
+`dev-agent-context/context-index.md`; read that file first, then the context files it
+references, including `new-conversation-handoff.md` for session handoff. The
+npm/npx bootstrap uses this same installer under the hood.
 
 There are two normal ways to use it.
 
@@ -247,6 +282,10 @@ OPENAI_API_KEY=
   `ts_iso, engine_version, run_id, round, verb, actor, role, provider, model,
   prompt_tokens, completion_tokens, total_tokens, latency_ms, http_status,
   result, qa_passed, qa_failed, files_written, est_cost_usd, task_file, error`.
+- **`file-authorship.csv`** (auto) — one machine-written row per worker-written
+  file: path, created/updated action, subtask id, actor key, provider, model, and
+  engine version. This keeps agent authorship in metadata instead of injecting
+  comments into product files.
 - **`model-worker-performance.csv`** (curated) — the hand-owned acceptance ledger.
   `report` only *drafts* a row; you annotate and keep it.
 
@@ -260,11 +299,11 @@ Use telemetry after real runs like this:
 node tools/agent-runner/run.mjs report
 ```
 
-Keep `agent-context/telemetry.csv` as the raw machine log and annotate
-`agent-context/model-worker-performance.csv` with human judgment: which worker was
-best for which task shape, what failed, what prompt/config adjustment helped, and
-whether QA passed. Do not paste secrets, raw `.env` contents, or sensitive customer
-data into the curated ledger.
+Keep `dev-agent-context/telemetry.csv` and `dev-agent-context/file-authorship.csv` as raw
+machine logs, then annotate `dev-agent-context/model-worker-performance.csv` with
+human judgment: which worker was best for which task shape, what failed, what
+prompt/config adjustment helped, and whether QA passed. Do not paste secrets, raw
+`.env` contents, or sensitive customer data into the curated ledger.
 
 ## Contributing back from installed repos
 

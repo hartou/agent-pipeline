@@ -50,7 +50,7 @@ artifact folder. Each worker returns a PR-like change to Fugu. Fugu validates it
 rejects it back to the worker when needed, and returns only satisfied candidates to
 the client. The client is still the final approver.
 
-The only things that ever land in the `agent-output/` folder are **plans,
+The only things that ever land in the `dev-agent-output/` folder are **plans,
 feedback, telemetry, and raw dumps** — never product code.
 
 ### The loop
@@ -110,6 +110,27 @@ with `dependsOn`. Build the worker image once with
 `docker compose --profile agents build agent-worker` (the wiring also builds it on
 demand).
 
+If you see only one worker container at a time, inspect the run's graph summary:
+`initially-ready` tells you how many build sub‑tasks can start immediately,
+`dependency-edges` shows how much sequencing Fugu planned, and
+`file-overlap-pairs` shows where the wiring's file lock will serialize work for
+safety. A healthy parallel plan usually has multiple initially-ready, file-disjoint
+build tasks.
+
+### Evaluating GLM as a faster worker
+
+The template includes `glm-5.2` as a worker candidate for fast senior coding and
+implementation QA. Start by letting Fugu choose it for independent, file-disjoint
+slices; compare its telemetry rows against DeepSeek and gpt-4o-mini for latency,
+files written, and whether client QA went green. Promote it to the default broad
+coder only after it repeatedly lands multi-file changes with fewer feedback loops
+than DeepSeek.
+
+Recommended initial role: **fast senior coder / implementation-QA worker**, not
+orchestrator. That gives the pipeline speed where the expensive calls happen while
+keeping Fugu responsible for dependency graphs until GLM has enough plan-quality
+evidence.
+
 ### NPM releases are deliberate
 
 Accepted work and published packages are separate gates. Accepted work can collect
@@ -117,6 +138,11 @@ on the integration branch. When it is time to publish, create or update
 `release/npm`, run package checks there (`npm pack`, install smoke test, metadata
 and version review), ask for client approval, then publish and tag from that
 release branch.
+
+Keep development memory out of that branch. In this source repo, development-only
+folders use a `dev-` prefix, such as `dev-agent-context/` and `dev-publication/`.
+They are useful while building and evaluating, but should not be part of the npm
+release branch unless explicitly approved as release documentation.
 
 ### What's configurable (so it ports to any repo)
 
@@ -145,6 +171,10 @@ Create provider keys from the provider dashboards, then store the values locally
 - **`telemetry.csv`** (automatic) — one row per model call: tokens, latency, HTTP
   status, estimated cost, files written, stamped with the engine version. Written
   by the wiring on every call.
+- **`file-authorship.csv`** (automatic) — one row per worker-written file: path,
+  created/updated action, subtask id, actor key, provider, model, and engine
+  version. This tracks which agent produced each file without adding comments to
+  product code.
 - **`model-worker-performance.csv`** (curated) — the hand‑owned acceptance ledger
   with human judgment (what worked, what to adjust). The pipeline only *drafts* a
   row for you to annotate; it never overwrites your history.

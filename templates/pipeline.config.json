@@ -3,9 +3,9 @@
   "version": 1,
   "project": "your-project",
   "paths": {
-    "request": "agent-tasks/customer-request.md",
-    "tasks": "agent-tasks",
-    "artifacts": "agent-output"
+    "request": "dev-agent-tasks/customer-request.md",
+    "tasks": "dev-agent-tasks",
+    "artifacts": "dev-agent-output"
   },
   "actors": {
     "client": {
@@ -50,6 +50,21 @@
         "params": {},
         "pricing": { "inputPer1M": 0, "outputPer1M": 0 },
         "bestFor": ["scoped repo-local edits", "reviews"]
+      },
+      "glm-5.2": {
+        "role": "worker",
+        "provider": "zai",
+        "baseUrl": "https://api.z.ai/api/paas/v4",
+        "baseUrlEnv": "Z.AI_BASE_URL",
+        "model": "glm-5.2",
+        "modelEnv": "ZAI_MODEL",
+        "modelEnvAlternates": ["MODEL"],
+        "apiKeyEnv": "ZAI_API_KEY",
+        "apiKeyEnvAlternates": ["ZAI_API_SECRET", "Z.AI_API_Secret", "Z.AI_API_Key"],
+        "maxTokens": 12000,
+        "params": {},
+        "pricing": { "inputPer1M": 0, "outputPer1M": 0 },
+        "bestFor": ["fast senior coding", "implementation QA", "replacing slow broad DeepSeek tasks after evaluation"]
       }
     }
   },
@@ -80,7 +95,8 @@
     "dockerfile": "tools/agent-runner/Dockerfile"
   },
   "telemetry": {
-    "csv": "agent-context/telemetry.csv",
-    "curatedCsv": "agent-context/model-worker-performance.csv"
+    "csv": "dev-agent-context/telemetry.csv",
+    "fileAuthors": "dev-agent-context/file-authorship.csv",
+    "curatedCsv": "dev-agent-context/model-worker-performance.csv"
   }
 }
