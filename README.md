@@ -208,6 +208,9 @@ to replace generated init templates, including config.
 When upgrading an older generated config, the installer adds the default
 `workflow` policy if the target config does not already define one. Existing
 workflow policy is left untouched.
+It also adds any missing default worker entries by worker key so brownfield repos
+receive newly scaffolded roster roles without overwriting their existing worker
+configuration.
 
 After install, edit `tools/agent-runner/pipeline.config.json` for the target repo,
 add real API keys to `.env` or your shell, and run:
