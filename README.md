@@ -205,6 +205,10 @@ repo's customized `tools/agent-runner/pipeline.config.json`, `AGENTS.md`, and
 `.github/copilot-instructions.md`. Use `--force` only when you intentionally want
 to replace generated init templates, including config.
 
+When upgrading an older generated config, the installer adds the default
+`workflow` policy if the target config does not already define one. Existing
+workflow policy is left untouched.
+
 After install, edit `tools/agent-runner/pipeline.config.json` for the target repo,
 add real API keys to `.env` or your shell, and run:
 
