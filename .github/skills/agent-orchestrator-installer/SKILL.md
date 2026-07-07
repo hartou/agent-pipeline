@@ -1,12 +1,12 @@
 ---
 name: agent-orchestrator-installer
-description: 'Install or upgrade Agent Orchestrator mode and the agent-pipeline in another repository. Use when: bootstrap orchestrator agent mode, vendor agent-pipeline, upgrade installed runner/templates, install Fugu/DeepSeek/gpt-4o-mini workflow, create pipeline config, AGENTS.md, dev-agent-context, dev-agent-tasks, or dev-agent-output.'
+description: 'Install or upgrade Agent Orchestrator mode and the agent-pipeline in another repository. Use when: bootstrap orchestrator agent mode, vendor agent-pipeline, upgrade installed runner/templates, install Fugu/DeepSeek/GPT QA workflow, create pipeline config, AGENTS.md, dev-agent-context, dev-agent-tasks, or dev-agent-output.'
 argument-hint: '<target-repo-path> [--source <agent-pipeline-checkout>] [--upgrade|--force]'
 ---
 
 # Agent Orchestrator Installer
 
-Use this skill when a user wants to install the Agent Orchestrator mode into a repo so the repo can run the multi-agent delivery pipeline: Client/Copilot -> Fugu orchestrator -> DeepSeek/gpt-4o-mini workers -> real QA.
+Use this skill when a user wants to install the Agent Orchestrator mode into a repo so the repo can run the multi-agent delivery pipeline: Client/Copilot -> Fugu orchestrator -> DeepSeek/GPT role workers -> real QA.
 
 Use `--upgrade` for already-installed brownfield repos that need the latest runner,
 templates, and skill without losing their customized pipeline config.
@@ -91,6 +91,16 @@ node /path/to/agent-pipeline/.github/skills/agent-orchestrator-installer/scripts
 SAKANA_FUGU_API_KEY=
 DEEPSEEK_API_KEY=
 OPENAI_API_KEY=
+```
+
+Optional model overrides for the default faster-delivery roster:
+
+```sh
+FUGU_MODEL=fugu
+DEEPSEEK_FLASH_MODEL=deepseek-v4-flash
+DEEPSEEK_MODEL=deepseek-v4-pro
+OPENAI_QA_MODEL=gpt-5.4-mini
+OPENAI_MODEL=gpt-4o-mini
 ```
 
 5. Validate:

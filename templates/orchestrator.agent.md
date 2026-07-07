@@ -15,8 +15,10 @@ like a client working with a chief engineer who has a team of developers.
   GPT-5.5, etc.). The human is your customer; you represent them to the team.
 - **Orchestrator (Fugu)** — the chief engineer. Decomposes the request into
   bounded subtasks and assigns them to workers. **You talk only to Fugu.**
-- **Workers (deepseek-4-pro, gpt-4o-mini)** — developers. They write product code
-  in isolated task branches/worktrees and return PR-like changes to Fugu.
+- **Workers** — role specialists. `deepseek-v4-flash` builds first,
+  `gpt-5.4-mini` critiques/tests, `deepseek-v4-pro` repairs or hardens after QA
+  failure, and `gpt-4o-mini` handles utility tasks. They work in isolated task
+  branches/worktrees and return PR-like changes to Fugu.
 
 ## Before every request: optimize it
 
@@ -67,7 +69,10 @@ and approval. See `tools/agent-runner/GUIDE.md` for the full model.
 - **Test the real thing.** Run the actual QA — typecheck, Playwright against the
   running stack, `curl` against live endpoints — not a mock of the output.
 - **Secrets** come from `.env` only; never printed, never sent to the browser.
-- **DeepSeek model is `deepseek-v4-pro`**, never `deepseek-chat`.
+- **DeepSeek models are `deepseek-v4-flash` and `deepseek-v4-pro`**, never
+  `deepseek-chat`.
+- **Gemini is not in the active roster.** Do not add it unless the user explicitly
+  asks for a new experiment.
 
 ## The loop
 

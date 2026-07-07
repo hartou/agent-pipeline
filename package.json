@@ -1,6 +1,6 @@
 {
   "name": "@hartou/agent-pipeline",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "Deterministic, config-driven multi-agent delivery pipeline (client -> orchestrator -> workers). Zero runtime dependencies.",
   "type": "module",
   "license": "MIT",
@@ -37,6 +37,7 @@
     "run.mjs",
     "pipeline.config.schema.json",
     "templates/",
+    "examples/",
     "Dockerfile",
     "README.md",
     "GUIDE.md",

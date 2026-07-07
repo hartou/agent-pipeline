@@ -5,8 +5,9 @@
 //   Client (you/Copilot) -> talks only to the Orchestrator, tests the REAL
 //     output, approves/rejects.
 //   Orchestrator (Fugu)  -> decomposes a request into bounded worker subtasks.
-//   Workers (deepseek-4-pro, gpt-4o-mini) -> write product code DIRECTLY into the
-//     real repo. No sandbox, no staging folder, no "build then move".
+//   Workers (deepseek-v4-flash, deepseek-v4-pro, gpt-5.4-mini, gpt-4o-mini) ->
+//     build, critique, repair, or handle utility work DIRECTLY in the real repo.
+//     No sandbox, no staging folder, no "build then move".
 //
 // Everything repo-specific (providers, models, key ENV names, paths, QA commands,
 // stack facts, telemetry) lives in pipeline.config.json. Keys are referenced by
@@ -239,11 +240,40 @@ function workerRoster(reg) {
     .join('\n');
 }
 
+function workflowRules(reg, scope) {
+  const workflow = reg.workflow || {};
+  const lines = [];
+  const addList = (title, items) => {
+    if (!Array.isArray(items) || items.length === 0) return;
+    lines.push(`${title}:`);
+    for (const item of items) lines.push(`- ${item}`);
+  };
+  const triggers = Array.isArray(workflow.eventTriggers) ? workflow.eventTriggers : [];
+  addList('Planning rules', scope === 'planning' ? workflow.planningRules : []);
+  addList('Build rules', scope === 'build' ? workflow.buildRules : []);
+  if (triggers.length) {
+    lines.push('Event triggers:');
+    for (const trigger of triggers) {
+      if (typeof trigger === 'string') lines.push(`- ${trigger}`);
+      else lines.push(`- ${trigger.name || 'trigger'}: when ${trigger.when || 'applicable'} -> ${trigger.action || 'follow the configured workflow policy'}`);
+    }
+  }
+  return lines.length ? lines.join('\n') : '';
+}
+
+async function workflowGrounding(reg) {
+  const files = [...new Set(reg.workflow?.groundingFiles || [])]
+    .filter((path) => existsSync(resolve(ROOT, path)));
+  return files.length ? readContextFiles(files) : '';
+}
+
 function orchestratorSystem(reg) {
+  const workflow = workflowRules(reg, 'planning');
   return `You are the orchestrator/PM for the ${reg.project} repo.
 Read the customer request and the given task spec, then decompose the work into
 bounded worker sub-tasks. Assign each sub-task to the best-fit worker:
 ${workerRoster(reg)}
+${workflow ? `\nWorkflow policy you MUST follow:\n${workflow}\n` : ''}
 Respect the task's stated scope and out-of-scope. Do NOT invent files or APIs.
 Optimize for wall-clock speed: split independent, file-disjoint work into separate
 sub-tasks and leave their "dependsOn" arrays empty. Do NOT add dependencies for
@@ -275,9 +305,11 @@ of guessing. Keep it reviewable.`;
 
 function buildSystem(reg) {
   const facts = (reg.stackFacts || []).map((f) => `- ${f}`).join('\n');
+  const workflow = workflowRules(reg, 'build');
   return `You are an implementation worker building directly into the ${reg.project} repo.
 Stack facts you MUST follow (do not deviate):
 ${facts || '- (no stack facts configured)'}
+${workflow ? `\nWorkflow policy you MUST follow:\n${workflow}\n` : ''}
 Implement ONLY your assigned slice and ONLY the listed files. Modify existing
 files minimally; never delete unrelated code; never expose secrets to the browser.
 Output ONLY file blocks in this EXACT format and nothing else (no prose, no
@@ -321,9 +353,10 @@ async function doOrchestrateInProcess({ reg, env, task, feedback, runId, round }
   const cfg = resolveActor('orchestrator', reg, env);
   const requestPath = reg.paths?.request ? resolve(ROOT, reg.paths.request) : null;
   const request = requestPath && existsSync(requestPath) ? await readFile(requestPath, 'utf8') : '';
+  const grounding = await workflowGrounding(reg);
   const userContent = feedback
-    ? `CUSTOMER REQUEST:\n\n${request}\n\n---\n\nTASK SPEC:\n\n${task}\n\n---\n\nCLIENT QA FEEDBACK — the previous build FAILED acceptance. Produce a minimal FIX plan (subtasks in the same JSON shape) that only addresses this failure; do not re-scope the whole epic:\n\n${feedback}`
-    : `CUSTOMER REQUEST:\n\n${request}\n\n---\n\nTASK SPEC:\n\n${task}`;
+    ? `CUSTOMER REQUEST:\n\n${request}\n\n---\n\nTASK SPEC:\n\n${task}${grounding ? `\n\n---\n\nWORKFLOW GROUNDING:\n\n${grounding}` : ''}\n\n---\n\nCLIENT QA FEEDBACK — the previous build FAILED acceptance. Produce a minimal FIX plan (subtasks in the same JSON shape) that only addresses this failure; do not re-scope the whole epic:\n\n${feedback}`
+    : `CUSTOMER REQUEST:\n\n${request}\n\n---\n\nTASK SPEC:\n\n${task}${grounding ? `\n\n---\n\nWORKFLOW GROUNDING:\n\n${grounding}` : ''}`;
   const messages = [
     { role: 'system', content: orchestratorSystem(reg) },
     { role: 'user', content: userContent },
@@ -407,7 +440,9 @@ async function doOrchestrate(opts) {
 async function doBuildSubtask({ reg, env, sub, providerOverride, contextFiles, runId, round }) {
   const cfg = resolveActor(providerOverride || sub.worker, reg, env);
   const existing = await readContextFiles((sub.files || []).filter((p) => existsSync(resolve(ROOT, p))));
-  const extra = contextFiles?.length ? await readContextFiles(contextFiles) : '';
+  const configuredContext = reg.workflow?.groundingFiles || [];
+  const extraFiles = [...new Set([...(contextFiles || []), ...configuredContext])];
+  const extra = extraFiles.length ? await readContextFiles(extraFiles.filter((path) => existsSync(resolve(ROOT, path)))) : '';
   const messages = [
     { role: 'system', content: buildSystem(reg) },
     {

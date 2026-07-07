@@ -23,7 +23,7 @@ loop using three different AI models, each playing a role it's good at.
 |------|-----|--------------|
 | **Client** | You / Copilot (any model — Opus 4.8, GPT‑5.5, …) | Define the work, optimize the request, **test the real output**, approve or reject. The only approver. |
 | **Orchestrator** | Fugu (Sakana) | The chief engineer. Breaks the request into bounded sub‑tasks and assigns each to the best worker. |
-| **Workers** | DeepSeek‑4‑pro, gpt‑4o‑mini | The developers. They write real code in isolated task branches/worktrees. |
+| **Workers** | deepseek‑v4‑flash, deepseek‑v4‑pro, gpt‑5.4‑mini, gpt‑4o‑mini | The specialists. They build, critique, repair, or handle utility work in isolated task branches/worktrees. |
 
 There is also one thing that is **not** an actor: the **wiring** — the small
 command‑line program [`run.mjs`](./run.mjs). The three actors are AI models behind
@@ -37,7 +37,7 @@ decisions. All the thinking belongs to the actors.
 flowchart LR
     C["Client = YOU / Copilot<br/>define · test · approve"]
     F["Orchestrator = Fugu<br/>decompose · assign"]
-    W["Workers = DeepSeek / gpt-4o-mini<br/>write real code"]
+    W["Workers = Flash / Pro / GPT QA / utility<br/>build · critique · repair"]
     C <-->|via run.mjs| F
     F <-->|via run.mjs| W
 ```
@@ -117,19 +117,42 @@ If you see only one worker container at a time, inspect the run's graph summary:
 safety. A healthy parallel plan usually has multiple initially-ready, file-disjoint
 build tasks.
 
-### Evaluating GLM as a faster worker
+### Faster default roster
 
-The template includes `glm-5.2` as a worker candidate for fast senior coding and
-implementation QA. Start by letting Fugu choose it for independent, file-disjoint
-slices; compare its telemetry rows against DeepSeek and gpt-4o-mini for latency,
-files written, and whether client QA went green. Promote it to the default broad
-coder only after it repeatedly lands multi-file changes with fewer feedback loops
-than DeepSeek.
+The template starts from a role-specific roster tuned for faster delivery:
 
-Recommended initial role: **fast senior coder / implementation-QA worker**, not
-orchestrator. That gives the pipeline speed where the expensive calls happen while
-keeping Fugu responsible for dependency graphs until GLM has enough plan-quality
-evidence.
+- `deepseek-v4-flash` builds first. It is the default low-cost implementer for
+  bounded, file-local product slices.
+- `gpt-5.4-mini` critiques. It writes acceptance criteria, tests, checker logic,
+  and edge-case reviews; the client still validates its output.
+- `deepseek-v4-pro` repairs and hardens. Fugu should reserve it for QA failures,
+  integration risk, or broad changes where Flash is the wrong tool.
+- `gpt-4o-mini` handles utility work such as i18n, sentiment/classification, copy
+  variants, and small transformations.
+
+Gemini and GLM are not part of the active scaffolded roster. Keep them as local
+experiments only when a target repo explicitly opts in and records telemetry.
+
+For a quick end-to-end demo, copy `tools/agent-runner/examples/flatbird-demo-task.md`
+into `dev-agent-tasks/` after install and run it through the pipeline. The task is
+small enough for fast iteration but complex enough to exercise implementation, QA,
+and repair roles.
+
+### Workflow guardrails before roster changes
+
+Prefer improving `workflow` policy before changing the default models. The config
+supports planning rules, build rules, event triggers, and grounding files. These
+are injected into Fugu and worker prompts so the same roster behaves more
+predictably:
+
+- QA/spec critic should refine existing deterministic checks where possible.
+- Repair/hardening should trigger only after red QA or named integration risk.
+- Utility workers should stay on bounded text or tiny transformation chores.
+- Grounding files should point at repo-specific decisions, worker guardrails, and
+  review checklists so subtasks are anchored in real project constraints.
+
+This keeps the roster stable while giving each repo a tunable workflow layer for
+cost, speed, evidence, and acceptance quality.
 
 ### NPM releases are deliberate
 
@@ -281,9 +304,10 @@ validation output so the upstream project can judge whether the change generaliz
 No. The loop is bounded by `maxRounds` in the config, and cost is tracked per call
 (and can be summarized with `report`).
 
-**Q: Why DeepSeek‑4‑pro specifically, not `deepseek-chat`?**
-The DeepSeek worker must use the `deepseek-v4-pro` model; `deepseek-chat` is a
-different, weaker model and is explicitly disallowed in the stack rules.
+**Q: Why DeepSeek‑4‑flash / DeepSeek‑4‑pro specifically, not `deepseek-chat`?**
+The DeepSeek workers must use `deepseek-v4-flash` for primary low-cost builds and
+`deepseek-v4-pro` for repair/integration. `deepseek-chat` is a different, weaker
+model and is explicitly disallowed in the stack rules.
 
 **Q: Does anything get merged automatically?**
 No. The Client stays the approver. Workers write code and QA runs, but you review and

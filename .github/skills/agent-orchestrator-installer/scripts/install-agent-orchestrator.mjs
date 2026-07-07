@@ -120,6 +120,7 @@ async function copyRunner({ sourceRoot, targetRoot, force, preserveConfig }) {
     'README.md',
     'GUIDE.md',
     'templates',
+    'examples',
   ];
 
   for (const entry of entries) {
@@ -131,10 +132,30 @@ async function copyRunner({ sourceRoot, targetRoot, force, preserveConfig }) {
   if (savedConfig !== null) {
     await writeFile(targetConfig, savedConfig, 'utf8');
     console.error(`[installer] preserved ${targetConfig}`);
+    await addDefaultWorkflowIfMissing({ sourceRoot, targetConfig });
   }
 
   console.error(`[installer] wrote ${targetRunner}`);
   return true;
+}
+
+async function addDefaultWorkflowIfMissing({ sourceRoot, targetConfig }) {
+  const templateConfig = join(sourceRoot, 'templates', 'pipeline.config.json');
+  const target = JSON.parse(await readFile(targetConfig, 'utf8'));
+  if (target.workflow !== undefined) return;
+
+  const template = JSON.parse(await readFile(templateConfig, 'utf8'));
+  if (template.workflow === undefined) return;
+
+  const migrated = {};
+  for (const [key, value] of Object.entries(target)) {
+    migrated[key] = value;
+    if (key === 'stackFacts') migrated.workflow = template.workflow;
+  }
+  if (migrated.workflow === undefined) migrated.workflow = template.workflow;
+
+  await writeFile(targetConfig, `${JSON.stringify(migrated, null, 2)}\n`, 'utf8');
+  console.error(`[installer] added default workflow policy to ${targetConfig}`);
 }
 
 async function copySkill({ sourceRoot, targetRoot, force }) {
@@ -228,7 +249,7 @@ async function scaffoldRepoFiles({ targetRoot, skipAgentsMd }) {
   );
   await writeIfMissing(
     join(targetRoot, 'dev-agent-context', 'model-worker-guardrails.md'),
-    '# Model Worker Guardrails\n\nTrack model roles, strengths, failure modes, and prompt/config adjustments here. Update after benchmark or production runs.\n\n## Current Role Split\n\n- Fugu: orchestration, dependency graph, worker assignment, validation.\n- DeepSeek: broad implementation candidate; compare speed and QA outcomes before promotion.\n- gpt-4o-mini: scoped local edits and lightweight review work.\n- GLM: evaluation candidate for senior coding or implementation QA; require repeated telemetry before promotion.\n\n## Evaluation Rules\n\n- Compare models on the same task shape, files, max token budget, QA command, and telemetry fields.\n- Prefer streaming-aware metrics: time to first token, generation duration, output tokens/sec, and end-to-end latency.\n- Record model decisions in `model-worker-performance.csv`.\n',
+    '# Model Worker Guardrails\n\nTrack model roles, strengths, failure modes, and prompt/config adjustments here. Update after benchmark or production runs.\n\n## Current Role Split\n\n- Fugu: orchestration, dependency graph, worker assignment, validation.\n- deepseek-v4-flash: primary low-cost implementer for bounded product slices.\n- gpt-5.4-mini: QA/spec critic for acceptance criteria, tests, checkers, and edge-case review.\n- deepseek-v4-pro: repair and integration hardener after QA failure or high-risk changes.\n- gpt-4o-mini: utility tasks such as i18n, sentiment/classification, copy variants, and small transformations.\n\n## Evaluation Rules\n\n- Compare models on the same task shape, files, max token budget, QA command, and telemetry fields.\n- Prefer streaming-aware metrics: time to first token, generation duration, output tokens/sec, and end-to-end latency.\n- Record model decisions in `model-worker-performance.csv`.\n- Keep Gemini and GLM out of the active roster unless the repo explicitly opts into a new experiment.\n',
   );
   await writeIfMissing(
     join(targetRoot, 'dev-agent-context', 'mvp-tracker.md'),
@@ -248,7 +269,7 @@ async function scaffoldRepoFiles({ targetRoot, skipAgentsMd }) {
   );
   await writeIfMissing(
     join(targetRoot, '.env.agent-pipeline.example'),
-    'SAKANA_FUGU_API_KEY=\nDEEPSEEK_API_KEY=\nOPENAI_API_KEY=\nFUGU_MODEL=fugu\nDEEPSEEK_MODEL=deepseek-v4-pro\nOPENAI_MODEL=gpt-4o-mini\n',
+    'SAKANA_FUGU_API_KEY=\nDEEPSEEK_API_KEY=\nOPENAI_API_KEY=\nFUGU_MODEL=fugu\nDEEPSEEK_FLASH_MODEL=deepseek-v4-flash\nDEEPSEEK_MODEL=deepseek-v4-pro\nOPENAI_QA_MODEL=gpt-5.4-mini\nOPENAI_MODEL=gpt-4o-mini\n',
   );
   await writeIfMissing(
     join(targetRoot, '.github', 'copilot-instructions.md'),
@@ -303,7 +324,7 @@ async function main() {
     process.stdout.write('1. Edit tools/agent-runner/pipeline.config.json for this repo.\n');
     process.stdout.write('2. Add real API keys to .env or your shell; use .env.agent-pipeline.example for names only.\n');
     process.stdout.write('3. Run: node tools/agent-runner/run.mjs doctor\n');
-    process.stdout.write('4. Create a tiny task in dev-agent-tasks/ and run: node tools/agent-runner/run.mjs run --task dev-agent-tasks/<task>.md\n');
+    process.stdout.write('4. Optional fast demo: cp tools/agent-runner/examples/flatbird-demo-task.md dev-agent-tasks/flatbird-demo.md && node tools/agent-runner/run.mjs run --task dev-agent-tasks/flatbird-demo.md\n');
   } finally {
     if (tempSource) await rm(tempSource, { recursive: true, force: true });
   }

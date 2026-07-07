@@ -7,8 +7,9 @@ Roles mirror a real software team:
 
 - **Client** (you / Copilot) — intake, QA, approval. Talks only to the orchestrator.
 - **Orchestrator** (Fugu) — decomposes a request into bounded subtasks.
-- **Workers** (deepseek-4-pro, gpt-4o-mini) — write product code in isolated
-  task branches/worktrees, then submit PR-like changes back to Fugu.
+- **Workers** (deepseek-4-flash, deepseek-4-pro, gpt-5.4-mini, gpt-4o-mini) —
+  build, critique, repair, or handle utility work in isolated task
+  branches/worktrees, then submit PR-like changes back to Fugu.
 
 Fugu validates worker PRs and sends rejected work back to the workers. Once Fugu
 is satisfied, the accepted candidate returns to the client for final approval.
@@ -28,6 +29,7 @@ governance are intentionally separate.
 run.mjs                         # the engine (repo-agnostic)
 pipeline.config.schema.json     # validates generated configs (used by `doctor`)
 templates/                      # scaffolds written by `init`
+examples/                       # demo task specs for smoke-testing installs
 Dockerfile                      # runner image for containerized orchestration/workers
 .github/skills/                 # reusable Copilot installer skill
 README.md / GUIDE.md            # public install and concept docs
@@ -83,18 +85,43 @@ ready, how many dependency edges Fugu planned, and how many file-overlap pairs t
 safety lock found. If `initially-ready=1` or most tasks share files, the plan is
 serial even though container mode is enabled.
 
-## Worker model evaluation
+## Faster delivery roster
 
-The default scaffold includes three worker profiles: DeepSeek for broad first
-drafts, gpt-4o-mini for scoped local edits/reviews, and `glm-5.2` as a fast senior
-coder plus implementation-QA candidate. The orchestrator sees each worker's
-`bestFor` hints and should assign GLM to file-disjoint implementation or review
-slices while telemetry records latency, token use, file output, and QA outcome.
+The default scaffold starts from the tested faster-delivery blend:
 
-For Z.AI-compatible GLM endpoints, keep secrets in `.env` and reference only env
-var names in config. The scaffold uses `ZAI_API_KEY` / `ZAI_MODEL`, with fallbacks
-for dotted names such as `Z.AI_API_Key`, `Z.AI_API_Secret`, `Z.AI_BASE_URL`, and
-the generic `MODEL` variable.
+- `deepseek-v4-flash` — primary low-cost implementer for bounded product slices.
+- `gpt-5.4-mini` — QA/spec critic for acceptance criteria, tests, and edge-case review.
+- `deepseek-v4-pro` — repair and integration hardener after QA failure or high-risk changes.
+- `gpt-4o-mini` — utility worker for i18n, sentiment/classification, and small transformations.
+
+Fugu remains the supervisor/orchestrator. It owns planning, dependency graphs,
+worker assignment, and validation. The client still runs the real QA and approves
+the final candidate. Gemini and GLM are intentionally not in the active scaffolded
+roster; add them back only as explicit local experiments after recording telemetry.
+
+The package also includes a static-game smoke task at
+`examples/flatbird-demo-task.md`. After installing into a demo repo, copy that
+task into `dev-agent-tasks/` and run the pipeline to validate the roster on a
+small but non-trivial browser game.
+
+## Workflow guardrails and triggers
+
+The default roster is stable; tune delivery quality with `workflow` policy in
+`pipeline.config.json` before changing models. The runner injects these rules into
+Fugu's planning prompt and each worker prompt:
+
+- `planningRules` constrain how Fugu splits work, assigns QA/spec critic tasks,
+  and decides when repair or hardening is warranted.
+- `buildRules` constrain worker output, grounding, checker edits, and rewrite
+  scope.
+- `eventTriggers` name the concrete events that should activate QA critic,
+  repair hardener, or utility work.
+- `groundingFiles` add repo-local context such as architecture decisions, model
+  guardrails, and review checklists when those files exist.
+
+Use this layer for cost and quality control: make GPT QA refine existing checks,
+make Pro conditional on red QA or explicit integration risk, and ground every
+subtask in real files and configured QA commands.
 
 ## Branch/worktree acceptance flow
 
@@ -148,7 +175,7 @@ the reusable installer skill.
 
 The bootstrap installs:
 
-- `tools/agent-runner/` with the pinned runner and templates.
+- `tools/agent-runner/` with the pinned runner, templates, and examples.
 - `.github/skills/agent-orchestrator-installer/` for future Copilot-assisted installs.
 - `.github/agents/orchestrator.agent.md`.
 - `.github/instructions/agent-pipeline.instructions.md` with pipeline-specific
@@ -178,11 +205,23 @@ repo's customized `tools/agent-runner/pipeline.config.json`, `AGENTS.md`, and
 `.github/copilot-instructions.md`. Use `--force` only when you intentionally want
 to replace generated init templates, including config.
 
+When upgrading an older generated config, the installer adds the default
+`workflow` policy if the target config does not already define one. Existing
+workflow policy is left untouched.
+
 After install, edit `tools/agent-runner/pipeline.config.json` for the target repo,
 add real API keys to `.env` or your shell, and run:
 
 ```sh
 node tools/agent-runner/run.mjs doctor
+```
+
+For a fast demo after doctor is green:
+
+```sh
+mkdir -p dev-agent-tasks
+cp tools/agent-runner/examples/flatbird-demo-task.md dev-agent-tasks/flatbird-demo.md
+node tools/agent-runner/run.mjs run --task dev-agent-tasks/flatbird-demo.md
 ```
 
 Nothing about endpoints, models, or keys lives in code — only in
