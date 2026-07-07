@@ -104,6 +104,25 @@ The package also includes a static-game smoke task at
 task into `dev-agent-tasks/` and run the pipeline to validate the roster on a
 small but non-trivial browser game.
 
+## Workflow guardrails and triggers
+
+The default roster is stable; tune delivery quality with `workflow` policy in
+`pipeline.config.json` before changing models. The runner injects these rules into
+Fugu's planning prompt and each worker prompt:
+
+- `planningRules` constrain how Fugu splits work, assigns QA/spec critic tasks,
+  and decides when repair or hardening is warranted.
+- `buildRules` constrain worker output, grounding, checker edits, and rewrite
+  scope.
+- `eventTriggers` name the concrete events that should activate QA critic,
+  repair hardener, or utility work.
+- `groundingFiles` add repo-local context such as architecture decisions, model
+  guardrails, and review checklists when those files exist.
+
+Use this layer for cost and quality control: make GPT QA refine existing checks,
+make Pro conditional on red QA or explicit integration risk, and ground every
+subtask in real files and configured QA commands.
+
 ## Branch/worktree acceptance flow
 
 The intended product workflow is branch-based, not shared-checkout editing:

@@ -49,6 +49,34 @@
       "items": { "type": "string" },
       "description": "Repo-specific stack rules fed to the build worker so the engine stays generic."
     },
+    "workflow": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Repo-specific workflow policy injected into orchestrator and worker prompts: planning guardrails, event triggers, and grounding files.",
+      "properties": {
+        "planningRules": { "type": "array", "items": { "type": "string" } },
+        "buildRules": { "type": "array", "items": { "type": "string" } },
+        "eventTriggers": {
+          "type": "array",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "when", "action"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "when": { "type": "string" },
+                  "action": { "type": "string" }
+                }
+              }
+            ]
+          }
+        },
+        "groundingFiles": { "type": "array", "items": { "type": "string" }, "description": "Repo-relative files whose contents are added as workflow grounding when they exist." }
+      }
+    },
     "qa": {
       "type": "object",
       "required": ["commands", "order"],

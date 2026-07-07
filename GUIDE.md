@@ -138,6 +138,22 @@ into `dev-agent-tasks/` after install and run it through the pipeline. The task 
 small enough for fast iteration but complex enough to exercise implementation, QA,
 and repair roles.
 
+### Workflow guardrails before roster changes
+
+Prefer improving `workflow` policy before changing the default models. The config
+supports planning rules, build rules, event triggers, and grounding files. These
+are injected into Fugu and worker prompts so the same roster behaves more
+predictably:
+
+- QA/spec critic should refine existing deterministic checks where possible.
+- Repair/hardening should trigger only after red QA or named integration risk.
+- Utility workers should stay on bounded text or tiny transformation chores.
+- Grounding files should point at repo-specific decisions, worker guardrails, and
+  review checklists so subtasks are anchored in real project constraints.
+
+This keeps the roster stable while giving each repo a tunable workflow layer for
+cost, speed, evidence, and acceptance quality.
+
 ### NPM releases are deliberate
 
 Accepted work and published packages are separate gates. Accepted work can collect

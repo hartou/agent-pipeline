@@ -82,6 +82,29 @@
     "State any hard rules (secrets handling, forbidden APIs, required patterns).",
     "The build worker receives these verbatim, so be precise and version-specific."
   ],
+  "workflow": {
+    "planningRules": [
+      "Every subtask must name concrete repo files and acceptance criteria grounded in the task, configured QA commands, or grounding files.",
+      "Treat QA/spec critic work as a small event-triggered slice, not a broad second implementation pass.",
+      "When an existing deterministic checker is present, assign QA/spec critic work to refine that checker in place instead of creating a duplicate checker.",
+      "Schedule repair/integration hardening only after QA failure or after naming concrete cross-file integration risk in the subtask instructions."
+    ],
+    "buildRules": [
+      "Use the provided existing file contents and grounding files as source of truth; do not invent APIs, selectors, scripts, or conventions.",
+      "For checker or QA work, encode deterministic acceptance criteria with minimal edits and avoid broad rewrites of product files.",
+      "Prefer concise file changes over verbose generated artifacts; no duplicate checkers for the same acceptance surface."
+    ],
+    "eventTriggers": [
+      { "name": "qa-critic", "when": "acceptance coverage is missing, stale, or explicitly requested", "action": "refine existing deterministic checks or create one small checker if none exists" },
+      { "name": "repair-hardener", "when": "client QA is red or Fugu identifies concrete integration risk", "action": "schedule the minimal repair slice and include the evidence in instructions" },
+      { "name": "utility-worker", "when": "the task is a bounded text, i18n, classification, or tiny transformation chore", "action": "keep files and output small" }
+    ],
+    "groundingFiles": [
+      "dev-agent-context/architecture-decisions.md",
+      "dev-agent-context/model-worker-guardrails.md",
+      "dev-agent-context/review-checklist.md"
+    ]
+  },
   "qa": {
     "commands": [
       { "name": "typecheck", "run": "npm run typecheck" },
