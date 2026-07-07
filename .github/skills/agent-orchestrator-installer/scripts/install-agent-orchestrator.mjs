@@ -132,30 +132,51 @@ async function copyRunner({ sourceRoot, targetRoot, force, preserveConfig }) {
   if (savedConfig !== null) {
     await writeFile(targetConfig, savedConfig, 'utf8');
     console.error(`[installer] preserved ${targetConfig}`);
-    await addDefaultWorkflowIfMissing({ sourceRoot, targetConfig });
+    await migratePreservedConfig({ sourceRoot, targetConfig });
   }
 
   console.error(`[installer] wrote ${targetRunner}`);
   return true;
 }
 
-async function addDefaultWorkflowIfMissing({ sourceRoot, targetConfig }) {
+async function migratePreservedConfig({ sourceRoot, targetConfig }) {
   const templateConfig = join(sourceRoot, 'templates', 'pipeline.config.json');
   const target = JSON.parse(await readFile(targetConfig, 'utf8'));
-  if (target.workflow !== undefined) return;
-
   const template = JSON.parse(await readFile(templateConfig, 'utf8'));
-  if (template.workflow === undefined) return;
+  let changed = false;
 
   const migrated = {};
   for (const [key, value] of Object.entries(target)) {
     migrated[key] = value;
-    if (key === 'stackFacts') migrated.workflow = template.workflow;
+    if (key === 'actors') {
+      migrated.actors = {
+        ...value,
+        workers: {
+          ...(value.workers || {}),
+        },
+      };
+      for (const [workerKey, workerConfig] of Object.entries(template.actors?.workers || {})) {
+        if (migrated.actors.workers[workerKey] === undefined) {
+          migrated.actors.workers[workerKey] = workerConfig;
+          changed = true;
+          console.error(`[installer] added default worker ${workerKey} to ${targetConfig}`);
+        }
+      }
+    }
+    if (key === 'stackFacts' && target.workflow === undefined && template.workflow !== undefined) {
+      migrated.workflow = template.workflow;
+      changed = true;
+      console.error(`[installer] added default workflow policy to ${targetConfig}`);
+    }
   }
-  if (migrated.workflow === undefined) migrated.workflow = template.workflow;
+  if (migrated.workflow === undefined && template.workflow !== undefined) {
+    migrated.workflow = template.workflow;
+    changed = true;
+    console.error(`[installer] added default workflow policy to ${targetConfig}`);
+  }
 
+  if (!changed) return;
   await writeFile(targetConfig, `${JSON.stringify(migrated, null, 2)}\n`, 'utf8');
-  console.error(`[installer] added default workflow policy to ${targetConfig}`);
 }
 
 async function copySkill({ sourceRoot, targetRoot, force }) {
